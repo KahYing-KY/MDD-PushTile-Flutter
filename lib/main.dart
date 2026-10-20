@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/home_screen.dart';
 import 'screens/push_input.dart';
-
+// run the code using "flutter run -d chrome" first to download dependencies.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
