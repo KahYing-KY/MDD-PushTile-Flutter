@@ -6,6 +6,25 @@ import 'push_input.dart';
 import 'training_session.dart';
 import 'training_history_service.dart';
 
+// ===========================================================================
+// Dynamic Hold Classification Helper
+// ===========================================================================
+/// Classifies a hold duration relative to the total note duration.
+/// - Under 40% of duration  -> no press (too short)
+/// - 40% to 80% of duration -> half press
+/// - Above 80% of duration  -> full press
+PressResult classifyHoldDynamic(double heldSec, double totalDurationSec) {
+  if (totalDurationSec <= 0) return PressResult.none;
+  final ratio = heldSec / totalDurationSec;
+  if (ratio < 0.40) {
+    return PressResult.none;
+  } else if (ratio < 0.80) {
+    return PressResult.half;
+  } else {
+    return PressResult.full;
+  }
+}
+
 class _Note {
   final int lane; // index into mode.cells
   double start; // time (s) the note must be pressed
@@ -172,7 +191,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
           _flash('MISS', Colors.redAccent);
         } else if (n.state == 1 && _t >= n.start + n.duration) {
           n.state = 2;
-          _stats.add(classifyHold(n.duration));
+          _stats.add(classifyHoldDynamic(n.duration, n.duration));
           _completed++;
           _combo++;
           _bestCombo = max(_bestCombo, _combo);
@@ -226,7 +245,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
         setState(() {
           final held = _t - n.pressAt;
           n.state = 4;
-          final r = classifyHold(held);
+          final r = classifyHoldDynamic(held, n.duration);
           _stats.add(r);
           _dropped++;
           _combo = 0;
@@ -243,7 +262,6 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
     }
   }
 
-  // inside setState
   void _finish({bool early = false}) {
     _ticker.stop();
     input.clear();
@@ -692,6 +710,7 @@ class _HighwayPainter extends CustomPainter {
       final color = _kindColors[n.kind]!;
       const bw = 0.55;
 
+      // Note body
       final body = Path()
         ..moveTo(cx(n.lane, yT) - hw(yT) * bw, yT)
         ..lineTo(cx(n.lane, yT) + hw(yT) * bw, yT)
@@ -701,6 +720,25 @@ class _HighwayPainter extends CustomPainter {
       canvas.drawPath(
           body, Paint()..color = color.withValues(alpha: n.state == 1 ? 0.75 : 0.45));
 
+      // Middle bar indicator
+      final midTime = n.start + (n.duration / 2);
+      final pMid = (t - (midTime - lead)) / lead;
+      if (pMid >= pTail && pMid <= pHead) {
+        final yMid = yAt(pMid);
+        final xMid = cx(n.lane, yMid);
+        final halfWidthMid = hw(yMid) * bw;
+
+        canvas.drawLine(
+          Offset(xMid - halfWidthMid, yMid),
+          Offset(xMid + halfWidthMid, yMid),
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.9)
+            ..strokeWidth = 2.5 * sc(yMid)
+            ..strokeCap = StrokeCap.round,
+        );
+      }
+
+      // Note cap
       final cap = RRect.fromRectAndRadius(
         Rect.fromCenter(
           center: Offset(cx(n.lane, yH), yH),
