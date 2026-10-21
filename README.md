@@ -2,6 +2,15 @@
 
 A new Flutter project.
 
+
+
+Editing and updating the code:
+
+git fetch in the terminal to get the most updated code
+update as needed
+push to branch, then submit pull request
+
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
