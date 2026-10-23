@@ -148,10 +148,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 ActionCard(
                   icon: Icons.lunch_dining_rounded,
                   color: kTeal,
-                  title: 'Burger Catch',
+                  title: 'Kitchen Cutter',
                   description:
-                      'Catch the falling ingredients by pushing tiles on the board.',
-                  buttonLabel: 'Play Burger Catch',
+                      'Cut ingredients by pushing tiles on the board.',
+                  buttonLabel: 'Play Kitchen Cutter',
                   onPressed: () => _go(const TwoTileKitchenCutterScreen()),
                 ),
                 ActionCard(
