@@ -9,6 +9,7 @@ import 'progress_screen.dart';
 import 'burger_catch_screen.dart';
 import 'two_tile_game_rhythm.dart';
 import 'cutting_game.dart';
+import 'cooking_studio_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -152,6 +153,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Catch the falling ingredients by pushing tiles on the board.',
                   buttonLabel: 'Play Burger Catch',
                   onPressed: () => _go(const TwoTileKitchenCutterScreen()),
+                ),
+                ActionCard(
+                  icon: Icons.restaurant_menu_rounded,
+                  color: kTeal,
+                  title: 'Cooking Studio',
+                  description:
+                      'Become a virtual chef! Choose from 5 cuisines and prepare '
+                      'delicious dishes by holding the left, right, or both tiles. '
+                      'Practise alternating hands, sustained holds, and two-hand coordination.',
+                  buttonLabel: 'Start Cooking',
+                  onPressed: () => _go(const CookingStudioScreen()),
                 ),
                 ActionCard(
                   icon: Icons.flash_on_rounded,
