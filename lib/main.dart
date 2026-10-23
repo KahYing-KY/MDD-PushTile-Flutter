@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/home_screen.dart';
 import 'screens/push_input.dart';
+import 'screens/cooking_studio_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
