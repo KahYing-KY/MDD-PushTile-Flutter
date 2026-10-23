@@ -8,6 +8,7 @@ import 'two_hand_play.dart';
 import 'progress_screen.dart';
 import 'burger_catch_screen.dart';
 import 'two_tile_game_rhythm.dart';
+import 'cutting_game.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -142,6 +143,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Catch the falling ingredients by pushing tiles on the board.',
                   buttonLabel: 'Play Burger Catch',
                   onPressed: () => _go(const BurgerCatchScreen()),
+                ),
+                                                ActionCard(
+                  icon: Icons.lunch_dining_rounded,
+                  color: kTeal,
+                  title: 'Burger Catch',
+                  description:
+                      'Catch the falling ingredients by pushing tiles on the board.',
+                  buttonLabel: 'Play Burger Catch',
+                  onPressed: () => _go(const TwoTileKitchenCutterScreen()),
                 ),
                 ActionCard(
                   icon: Icons.flash_on_rounded,
