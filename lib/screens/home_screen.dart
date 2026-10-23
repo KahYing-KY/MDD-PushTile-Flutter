@@ -6,6 +6,8 @@ import 'rhythm_screen.dart';
 import 'tictactoe_screen.dart';
 import 'two_hand_play.dart';
 import 'progress_screen.dart';
+import 'burger_catch_screen.dart';
+import 'two_tile_game_rhythm.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -105,6 +107,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   buttonLabel: 'Play Rhythm Game',
                   onPressed: () => _go(const RhythmGameScreen()),
                 ),
+                                ActionCard(
+                  icon: Icons.music_note_rounded,
+                  color: kGreen,
+                  title: 'Rhythm Game (Two-tiles)',
+                  description:
+                      'Hold the tiles as the notes arrive. Short, long and endurance holds. Choose your level.',
+                  buttonLabel: 'Play Rhythm Game',
+                  onPressed: () => _go(const TwoTileGameRhythmScreen()),
+                ),
                 ActionCard(
                   icon: Icons.tag_rounded,
                   color: kTeal,
@@ -122,6 +133,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       'One hand holds the anchor tile while the other reaches for the lit tile.',
                   buttonLabel: 'Play Hold & Reach',
                   onPressed: () => _go(const TwoHandPlayScreen()),
+                ),
+                                ActionCard(
+                  icon: Icons.lunch_dining_rounded,
+                  color: kTeal,
+                  title: 'Burger Catch',
+                  description:
+                      'Catch the falling ingredients by pushing tiles on the board.',
+                  buttonLabel: 'Play Burger Catch',
+                  onPressed: () => _go(const BurgerCatchScreen()),
                 ),
                 ActionCard(
                   icon: Icons.flash_on_rounded,
