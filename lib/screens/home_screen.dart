@@ -152,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   description:
                       'Cut ingredients by pushing tiles on the board.',
                   buttonLabel: 'Play Kitchen Cutter',
-                  onPressed: () => _go(const TwoTileKitchenCutterScreen()),
+                  onPressed: () => _go(const FourTileKitchenCutterScreen()),
                 ),
                 ActionCard(
                   icon: Icons.restaurant_menu_rounded,

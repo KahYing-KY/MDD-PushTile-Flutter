@@ -7,7 +7,7 @@ import 'training_session.dart';
 import 'training_history_service.dart';
 
 class _Note {
-  final int lane; // index into mode.cells
+  final int lane; // index 0..3 for 1x4
   double start; // time (s) the note must be pressed
   final double duration;
   final String kind; // half | full | endurance
@@ -25,6 +25,16 @@ const Map<String, Color> _kindColors = {
   'full': Color(0xFFFF4081),
   'endurance': Color(0xFFFFD740),
 };
+
+/// Customised to match the diagram layout (Left -> Bottom-Left -> Bottom-Right -> Right)
+const List<Color> _laneColors = [
+  Color(0xFFF0788C), // Lane 0 - Pink (Push tile left)
+  Color(0xFF7BD095), // Lane 1 - Green (Push tile bottom left)
+  Color(0xFFFFC95C), // Lane 2 - Yellow (Push tile bottom right)
+  Color(0xFF63A7EF), // Lane 3 - Blue (Push tile right)
+];
+
+const List<String> _laneKeyLabels = ['D', 'F', 'J', 'K'];
 
 /// Classifies a hold result scaled relative to a specific note's target duration.
 PressResult classifyNoteHold(double heldSeconds, double targetDuration) {
@@ -51,11 +61,17 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   final Random _random = Random();
   final List<_Note> _notes = [];
   final PressStats _stats = PressStats();
+  final Set<int> _touchDownLanes = {}; // Tracks active touch/mouse button presses
 
   _RPhase _phase = _RPhase.setup;
-  BoardMode _mode = BoardMode.row;
+  final BoardMode _mode = BoardMode.row;
   Difficulty _difficulty = Difficulty.easy;
   double _t = 0;
+
+  /// Retrieves 4 lane cells [0, 1, 2, 3] for 1x4 mode
+  List<int> get _laneCells => _mode.cells.length >= 4 
+      ? _mode.cells.sublist(0, 4) 
+      : const [0, 1, 2, 3];
 
   int _score = 0, _combo = 0, _bestCombo = 0;
   int _completed = 0, _missed = 0, _dropped = 0, _perfect = 0, _good = 0;
@@ -99,7 +115,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   @override
   void initState() {
     super.initState();
-    input.allowed = _mode.cells;
+    input.allowed = _laneCells;
     input.onDown = _onDown;
     input.onUp = _onUp;
     _ticker = createTicker(_onTick);
@@ -119,7 +135,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
     _notes.clear();
     double t = _lead + 1.0;
     int prev = -1;
-    final lanes = _mode.cells.length;
+    final lanes = _laneCells.length; // 4 lanes
     for (final k in _pattern) {
       int lane;
       do {
@@ -138,8 +154,9 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 
   void _startGame() {
     trainingStarted = true;
-    input.allowed = _mode.cells;
+    input.allowed = _laneCells;
     input.clear();
+    _touchDownLanes.clear();
     setState(() {
       _buildChart();
       _stats.reset();
@@ -208,7 +225,8 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 
   void _onDown(int cell) {
     if (_phase != _RPhase.playing) return;
-    final lane = _mode.cells.indexOf(cell);
+    final lane = _laneCells.indexOf(cell);
+    if (lane < 0) return;
     _Note? best;
     double bd = 99;
     for (final n in _notes) {
@@ -240,7 +258,8 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 
   void _onUp(int cell, double sec) {
     if (_phase != _RPhase.playing) return;
-    final lane = _mode.cells.indexOf(cell);
+    final lane = _laneCells.indexOf(cell);
+    if (lane < 0) return;
     for (final n in _notes) {
       if (n.lane == lane && n.state == 1) {
         setState(() {
@@ -266,6 +285,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   void _finish({bool early = false}) {
     _ticker.stop();
     input.clear();
+    _touchDownLanes.clear();
     _early = early;
     _phase = _RPhase.done;
 
@@ -281,7 +301,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
       halfPresses: _stats.half,
       noPresses: _stats.none,
       completed: !early,
-      notes: 'Score $_score | ${_mode.label} | holds $_completed/${_notes.length} | '
+      notes: 'Score $_score | 1x4 Mode | holds $_completed/${_notes.length} | '
           'missed $_missed, released early $_dropped | perfect $_perfect, good $_good | '
           'longest hold ${_longest.toStringAsFixed(1)} s | best combo $_bestCombo',
     ));
@@ -293,7 +313,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Rhythm Game')),
+      appBar: AppBar(title: const Text('Rhythm Game (1x4)')),
       body: SafeArea(
         child: PushKeyboard(
           controller: input,
@@ -318,7 +338,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
       children: [
         const Icon(Icons.music_note_rounded, size: 72, color: kTeal),
         const SizedBox(height: 8),
-        const Text('Rhythm Game',
+        const Text('1x4 Rhythm Game',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
@@ -349,25 +369,14 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
           label: (d) => d.label,
           onSelected: (d) => setState(() => _difficulty = d),
         ),
-        const SizedBox(height: 12),
-        chipRow<BoardMode>(
-          title: 'Board',
-          values: BoardMode.values,
-          selected: _mode,
-          label: (m) => m.label,
-          onSelected: (m) => setState(() {
-            _mode = m;
-            input.allowed = m.cells;
-          }),
-        ),
         const SizedBox(height: 8),
         practiceSwitch(PushConfig.practice,
             (v) => setState(() => PushConfig.practice = v)),
-        Text(
+        const Text(
           'Press evaluation scaled to note length:\n'
           'Under 45% = no press   •   45% to 90% = half press   •   90%+ = full press.\n'
-          'Keys: 1x3 uses G H J.  3x3 uses T Y U / G H J / V B N.',
-          style: const TextStyle(fontSize: 13, color: Colors.black54),
+          'Controls: Use on-screen pads or keyboard keys D  F  J  K.',
+          style: TextStyle(fontSize: 13, color: Colors.black54),
         ),
         const SizedBox(height: 20),
         FilledButton(
@@ -431,34 +440,30 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
             ),
           ),
           Expanded(
-            child: _mode == BoardMode.row
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AnimatedBuilder(
-                      animation: input,
-                      builder: (context, _) => CustomPaint(
-                        size: Size.infinite,
-                        painter: _HighwayPainter(
-                          _notes,
-                          _t,
-                          _lead,
-                          {
-                            for (var l = 0; l < 3; l++)
-                              if (input.isDown(_mode.cells[l])) l
-                          },
-                        ),
-                      ),
-                    ),
-                  )
-                : PushBoard(mode: _mode, input: input, styleOf: _gridStyle),
-          ),
-          const SizedBox(height: 8),
-          if (_mode == BoardMode.row)
-            SizedBox(
-              height: 100,
-              child: PushBoard(
-                  mode: BoardMode.row, input: input, styleOf: _padStyle),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedBuilder(
+                animation: input,
+                builder: (context, _) => CustomPaint(
+                  size: Size.infinite,
+                  painter: _HighwayPainter(
+                    _notes,
+                    _t,
+                    _lead,
+                    {
+                      for (var l = 0; l < 4; l++)
+                        if (input.isDown(_laneCells[l]) ||
+                            _touchDownLanes.contains(l))
+                          l
+                    },
+                  ),
+                ),
+              ),
             ),
+          ),
+          const SizedBox(height: 12),
+          // Interactive 4-Button Row with percentage fill animation
+          _buildFourButtonRow(),
           const SizedBox(height: 8),
           pressStatsBar(_stats, dark: true),
           TextButton(
@@ -471,88 +476,129 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
     );
   }
 
-  TileStyle _padStyle(int cell) {
-    const colors = [Color(0xFF00E5FF), Color(0xFFFF4081), Color(0xFFFFD740)];
-    final lane = _mode.cells.indexOf(cell);
-    return TileStyle(
-      bg: const Color(0xFF14143A),
-      border: colors[lane % 3],
-      borderWidth: 3,
-      labelColor: Colors.white,
+  /// Builds 4 interactive lane buttons with vertical progress fill based on hold percentage
+  Widget _buildFourButtonRow() {
+    return AnimatedBuilder(
+      animation: input,
+      builder: (context, _) {
+        return Row(
+          children: List.generate(4, (index) {
+            final cell = _laneCells[index];
+            final isPressed =
+                input.isDown(cell) || _touchDownLanes.contains(index);
+            final color = _laneColors[index];
+
+            // Check if there is an active hold note in this lane
+            _Note? holdNote;
+            for (final n in _notes) {
+              if (n.lane == index && n.state == 1) {
+                holdNote = n;
+                break;
+              }
+            }
+
+            double fillRatio = 0.0;
+            String labelText = _laneKeyLabels[index];
+            Color labelColor = Colors.white;
+            Color borderColor = color;
+            double borderWidth = 3.0;
+            Color fillColor = color.withValues(alpha: 0.45);
+
+            if (holdNote != null) {
+              final held = _t - holdNote.pressAt;
+              fillRatio = (holdNote.duration > 0 ? held / holdNote.duration : 0.0)
+                  .clamp(0.0, 1.0);
+              final pct = (fillRatio * 100).round();
+              final reachedMid = held >= holdNote.duration * 0.5;
+
+              labelText = '$pct%';
+              labelColor = reachedMid ? Colors.greenAccent : Colors.amberAccent;
+              borderColor = reachedMid ? kFullColor : kHalfColor;
+              borderWidth = reachedMid ? 5.0 : 3.0;
+              fillColor = reachedMid
+                  ? Colors.greenAccent.withValues(alpha: 0.4)
+                  : Colors.amberAccent.withValues(alpha: 0.4);
+            } else if (isPressed) {
+              fillRatio = 1.0;
+            }
+
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: Listener(
+                  onPointerDown: (_) {
+                    setState(() {
+                      _touchDownLanes.add(index);
+                    });
+                    _onDown(cell);
+                  },
+                  onPointerUp: (_) {
+                    setState(() {
+                      _touchDownLanes.remove(index);
+                    });
+                    _onUp(cell, 0);
+                  },
+                  onPointerCancel: (_) {
+                    setState(() {
+                      _touchDownLanes.remove(index);
+                    });
+                    _onUp(cell, 0);
+                  },
+                  child: Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF14143A),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: borderColor,
+                        width: borderWidth,
+                      ),
+                      boxShadow: isPressed || holdNote != null
+                          ? [
+                              BoxShadow(
+                                color: borderColor.withValues(alpha: 0.65),
+                                blurRadius: 14,
+                                spreadRadius: 2,
+                              )
+                            ]
+                          : [],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Stack(
+                        children: [
+                          // Bottom-to-top visual fill based on hold percentage
+                          if (fillRatio > 0)
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: FractionallySizedBox(
+                                heightFactor: fillRatio,
+                                widthFactor: 1.0,
+                                child: Container(color: fillColor),
+                              ),
+                            ),
+                          // Center label text
+                          Center(
+                            child: Text(
+                              labelText,
+                              style: TextStyle(
+                                color: labelColor,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
-  }
-
-  TileStyle _gridStyle(int cell) {
-    const dark = Color(0xFF14143A);
-    _Note? up;
-    _Note? hold;
-    for (final n in _notes) {
-      if (n.lane != cell) continue;
-      if (n.state == 1) {
-        hold = n;
-      } else if (n.state == 0 &&
-          n.start - _t <= _lead &&
-          (up == null || n.start < up.start)) {
-        up = n;
-      }
-    }
-
-    if (hold != null) {
-      final held = _t - hold.pressAt;
-      final pct = (hold.duration > 0 ? (held / hold.duration) * 100 : 0.0)
-          .clamp(0.0, 100.0)
-          .round();
-      final reachedMid = held >= hold.duration * 0.5;
-
-      return TileStyle(
-        bg: dark,
-        border: reachedMid ? kFullColor : kHalfColor,
-        borderWidth: reachedMid ? 5 : 3,
-        label: '$pct%',
-        labelColor: reachedMid ? Colors.greenAccent : Colors.amberAccent,
-      );
-    }
-    if (up != null) {
-      final p = (1 - (up.start - _t) / _lead).clamp(0.0, 1.0);
-      final color = _kindColors[up.kind]!;
-      return TileStyle(
-        bg: dark,
-        border: color,
-        borderWidth: 2 + 3 * p,
-        label: '${up.duration.toStringAsFixed(1)}s',
-        labelColor: Colors.white,
-        overlay: Stack(
-          children: [
-            Center(
-              child: FractionallySizedBox(
-                widthFactor: 0.45,
-                heightFactor: 0.45,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24, width: 2),
-                  ),
-                ),
-              ),
-            ),
-            Center(
-              child: FractionallySizedBox(
-                widthFactor: 1 - 0.55 * p,
-                heightFactor: 1 - 0.55 * p,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: color, width: 4),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    return const TileStyle(
-        bg: dark, border: Color(0xFF3A3A6A), labelColor: Colors.white);
   }
 
   Widget _summary() {
@@ -636,7 +682,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 }
 
 // ===========================================================================
-// Perspective highway (1x3 mode)
+// Perspective highway (1x4 mode)
 // ===========================================================================
 class _HighwayPainter extends CustomPainter {
   final List<_Note> notes;
@@ -666,14 +712,14 @@ class _HighwayPainter extends CustomPainter {
 
     double yAt(double p) => horizon + span * pow(p, 1.6).toDouble();
     double sc(double y) => 0.30 + 0.70 * ((y - horizon) / span);
+
+    // 1x4 Perspective center calculations
     double cx(int lane, double y) =>
-        s.width / 2 + (lane - 1) * (fullW / 3) * sc(y);
-    double hw(double y) => (fullW / 3) * sc(y) / 2;
+        s.width / 2 + (lane - 1.5) * (fullW / 4) * sc(y);
+    double hw(double y) => (fullW / 4) * sc(y) / 2;
 
-    const laneColors = [Color(0xFF00E5FF), Color(0xFFFF4081), Color(0xFFFFD740)];
-
-    // lanes
-    for (var l = 0; l < 3; l++) {
+    // Render 4 Lanes
+    for (var l = 0; l < 4; l++) {
       final path = Path()
         ..moveTo(cx(l, horizon) - hw(horizon), horizon)
         ..lineTo(cx(l, horizon) + hw(horizon), horizon)
@@ -685,7 +731,7 @@ class _HighwayPainter extends CustomPainter {
         path,
         Paint()
           ..color = isDown
-              ? laneColors[l].withValues(alpha: 0.28)
+              ? _laneColors[l].withValues(alpha: 0.28)
               : Colors.white.withValues(alpha: l.isEven ? 0.04 : 0.08),
       );
       canvas.drawPath(
@@ -697,7 +743,7 @@ class _HighwayPainter extends CustomPainter {
       );
     }
 
-    // hit line
+    // Hit line
     canvas.drawLine(
       Offset(0, hitY),
       Offset(s.width, hitY),
@@ -706,7 +752,7 @@ class _HighwayPainter extends CustomPainter {
         ..strokeWidth = 3,
     );
 
-    // notes
+    // Render Notes
     for (final n in notes) {
       if (n.state != 0 && n.state != 1) continue;
       final pHead = n.state == 1 ? 1.0 : (t - (n.start - lead)) / lead;

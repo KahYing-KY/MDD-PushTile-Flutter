@@ -9,25 +9,32 @@ import 'training_history_service.dart';
 enum _Phase { setup, cutting, done }
 
 class _IngredientTask {
-  final int lane; // 0 = Left Tile (Hold continuously), 1 = Right Tile (Press per cut)
+  final int lane; // 0: Pink (D), 1: Green (F), 2: Yellow (J), 3: Blue (K)
+  final bool isHold; // true = Hold continuously, false = Press per cut
   final String name;
   final int totalPieces; // Total pieces desired
   final int slicesPerCut; // Hits or hold multiplier per cut line
-  
+
   int get totalCuts => max(1, totalPieces - 1);
   int get totalHitsNeeded => totalCuts * slicesPerCut;
-  
+
   int completedHits = 0;
   double holdProgress = 0.0;
   int state = 0; // 0: pending, 1: active, 2: completed
 
-  _IngredientTask(this.lane, this.name, this.totalPieces, {this.slicesPerCut = 1});
+  _IngredientTask(
+    this.lane,
+    this.name,
+    this.totalPieces, {
+    required this.isHold,
+    this.slicesPerCut = 1,
+  });
 
-  double get progress => lane == 0
+  double get progress => isHold
       ? holdProgress
       : (completedHits / totalHitsNeeded).clamp(0.0, 1.0);
 
-  int get completedCuts => lane == 0
+  int get completedCuts => isHold
       ? (holdProgress * totalCuts).floor().clamp(0, totalCuts)
       : (completedHits / slicesPerCut).floor().clamp(0, totalCuts);
 }
@@ -43,6 +50,16 @@ const _ingredientColors = <String, Color>{
   'Coconut': Color(0xFF8D6E63),
 };
 
+const List<Color> _laneColors = [
+  Color(0xFFF0788C), // Pink (D)
+  Color(0xFF7BD095), // Green (F)
+  Color(0xFFFFC95C), // Yellow (J)
+  Color(0xFF63A7EF), // Blue (K)
+];
+
+const List<String> _laneKeyLabels = ['D', 'F', 'J', 'K'];
+const List<String> _laneNames = ['Pink (D)', 'Green (F)', 'Yellow (J)', 'Blue (K)'];
+
 // Ingredient pools by difficulty
 const _easyPool = ['Carrot', 'Cucumber', 'Cheese', 'Pumpkin'];
 const _mediumPool = ['Carrot', 'Cucumber', 'Steak', 'Cheese', 'Pumpkin', 'Pineapple', 'Frozen Meat'];
@@ -54,20 +71,22 @@ int _getSlicesPerCut(String name) => switch (name) {
       _ => 1,
     };
 
-class TwoTileKitchenCutterScreen extends StatefulWidget {
-  const TwoTileKitchenCutterScreen({super.key});
+class FourTileKitchenCutterScreen extends StatefulWidget {
+  const FourTileKitchenCutterScreen({super.key});
 
   @override
-  State<TwoTileKitchenCutterScreen> createState() =>
-      _TwoTileKitchenCutterScreenState();
+  State<FourTileKitchenCutterScreen> createState() =>
+      _FourTileKitchenCutterScreenState();
 }
 
-class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
+class _FourTileKitchenCutterScreenState
+    extends State<FourTileKitchenCutterScreen>
     with SingleTickerProviderStateMixin {
-  static const _cells = <int>[3, 5]; // G (Left) and J (Right)
+  final List<int> _cells = const [0, 1, 2, 3];
   final PushController input = PushController();
   final Random _random = Random();
   final PressStats _stats = PressStats();
+  final Set<int> _touchDownLanes = {}; // Tracks active touch/mouse button presses
 
   final List<_IngredientTask> _tasks = [];
   late final Ticker _ticker;
@@ -119,14 +138,15 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
     final ingredients = _generateRandomTaskPool();
 
     for (final name in ingredients) {
-      final lane = _random.nextInt(2);
+      final lane = _random.nextInt(4); // 4 Lanes
+      final isHold = _random.nextBool(); // Alternate hold vs tap per cut
       final pieces = switch (_difficulty) {
         Difficulty.easy => 4,
         Difficulty.medium => 5,
         Difficulty.hard => 6,
       };
       final slices = _getSlicesPerCut(name);
-      _tasks.add(_IngredientTask(lane, name, pieces, slicesPerCut: slices));
+      _tasks.add(_IngredientTask(lane, name, pieces, isHold: isHold, slicesPerCut: slices));
     }
     _currentTaskIndex = 0;
   }
@@ -135,6 +155,7 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
     trainingStarted = true;
     input.allowed = _cells;
     input.clear();
+    _touchDownLanes.clear();
     if (_ticker.isActive) _ticker.stop();
     setState(() {
       _makeTasks();
@@ -166,9 +187,12 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
 
       final current = _tasks[_currentTaskIndex];
 
-      // Lane 0: Continuous hold mechanism (Left Tile G)
-      if (current.lane == 0 && current.state == 1) {
-        if (input.isDown(_cells[0])) {
+      // Continuous hold mechanism for hold tasks
+      if (current.isHold && current.state == 1) {
+        final cell = _cells[current.lane];
+        final isInputActive = input.isDown(cell) || _touchDownLanes.contains(current.lane);
+
+        if (isInputActive) {
           current.holdProgress += 0.012 / current.slicesPerCut;
           if (current.holdProgress >= 1.0) {
             current.holdProgress = 1.0;
@@ -206,8 +230,8 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
         current.state = 1;
       }
 
-      // Lane 1: Press per slice impact (Right Tile J)
-      if (lane == 1) {
+      // Tap per chop impact
+      if (!current.isHold) {
         current.completedHits++;
         
         final hitInCurrentCut = ((current.completedHits - 1) % current.slicesPerCut) + 1;
@@ -231,7 +255,7 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
     if (lane < 0 || _currentTaskIndex >= _tasks.length) return;
 
     final current = _tasks[_currentTaskIndex];
-    if (lane == 0 && current.lane == 0 && current.state == 1 && current.holdProgress < 1.0) {
+    if (current.isHold && current.lane == lane && current.state == 1 && current.holdProgress < 1.0) {
       setState(() {
         _flash('RELEASED EARLY!', Colors.orangeAccent);
       });
@@ -242,6 +266,7 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
     if (_phase != _Phase.cutting) return;
     _ticker.stop();
     input.clear();
+    _touchDownLanes.clear();
     _phase = _Phase.done;
 
     TrainingHistoryService.instance.addSession(TrainingSession(
@@ -262,7 +287,7 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Kitchen Cutter Challenge')),
+        appBar: AppBar(title: const Text('Kitchen Cutter Challenge (4-Tile)')),
         body: SafeArea(
           child: PushKeyboard(
             controller: input,
@@ -285,15 +310,16 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
         children: [
           const Icon(Icons.kitchen_rounded, size: 72, color: Colors.orangeAccent),
           const SizedBox(height: 8),
-          const Text('Two-Tile Kitchen Cutter',
+          const Text('4-Tile Kitchen Cutter',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           const Text(
-            'Cut ingredients into equal parts!\n\n'
-            '• Left Tile (G): Press and HOLD continuously for steady slicing.\n'
-            '• Right Tile (J): Press and hold once for each rhythmic chop.\n'
-            '• Tougher items (Pumpkin, Frozen Meat, Coconut) require multiple chops per cut seam!',
+            'Cut ingredients into equal parts using 4 colored tiles!\n\n'
+            '• Pink (D) • Green (F) • Yellow (J) • Blue (K)\n\n'
+            '• HOLD tasks: Press and hold the target colored tile continuously.\n'
+            '• CHOP tasks: Tap the target tile rhythmic times per cut.\n'
+            '• Tough items require multiple chops/holds per cut seam!',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15),
           ),
@@ -324,7 +350,8 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
 
   Widget _play() {
     final currentTask = _currentTaskIndex < _tasks.length ? _tasks[_currentTaskIndex] : null;
-    final isDown = currentTask != null && input.isDown(_cells[currentTask.lane]);
+    final isDown = currentTask != null &&
+        (input.isDown(_cells[currentTask.lane]) || _touchDownLanes.contains(currentTask.lane));
 
     return Container(
       color: const Color(0xFF1E1E2C),
@@ -366,10 +393,14 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
           const SizedBox(height: 8),
           if (currentTask != null) ...[
             Text(
-              currentTask.lane == 0
-                  ? 'Target: Hold Left Tile (G) Continuously ${currentTask.slicesPerCut > 1 ? "(${currentTask.slicesPerCut}x Toughness)" : ""}'
-                  : 'Target: Press Right Tile (J) (${currentTask.slicesPerCut}x per cut) [${currentTask.completedHits}/${currentTask.totalHitsNeeded}]',
-              style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.w600),
+              currentTask.isHold
+                  ? 'Target: Hold ${_laneNames[currentTask.lane]} Continuously ${currentTask.slicesPerCut > 1 ? "(${currentTask.slicesPerCut}x Toughness)" : ""}'
+                  : 'Target: Tap ${_laneNames[currentTask.lane]} (${currentTask.slicesPerCut}x per cut) [${currentTask.completedHits}/${currentTask.totalHitsNeeded}]',
+              style: TextStyle(
+                color: _laneColors[currentTask.lane],
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 4),
             LinearProgressIndicator(
@@ -381,49 +412,121 @@ class _TwoTileKitchenCutterScreenState extends State<TwoTileKitchenCutterScreen>
             ),
           ],
           const SizedBox(height: 12),
-          SizedBox(
-            height: 100,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: PushTile(
-                      cell: _cells[0],
-                      input: input,
-                      style: TileStyle(
-                        bg: const Color(0xFF14143A),
-                        border: Colors.cyanAccent,
-                        borderWidth: 3,
-                        labelColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: PushTile(
-                      cell: _cells[1],
-                      input: input,
-                      style: TileStyle(
-                        bg: const Color(0xFF14143A),
-                        border: Colors.pinkAccent,
-                        borderWidth: 3,
-                        labelColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Interactive 4-Button Input Row
+          _buildFourButtonRow(),
+          const SizedBox(height: 8),
           TextButton(
             onPressed: () => setState(() => _finish(early: true)),
             child: const Text('End Session', style: TextStyle(color: Colors.white70)),
           ),
         ],
       ),
+    );
+  }
+
+  /// Builds 4 interactive lane buttons matching Pink, Green, Yellow, and Blue color scheme
+  Widget _buildFourButtonRow() {
+    return AnimatedBuilder(
+      animation: input,
+      builder: (context, _) {
+        return Row(
+          children: List.generate(4, (index) {
+            final cell = _cells[index];
+            final isPressed = input.isDown(cell) || _touchDownLanes.contains(index);
+            final color = _laneColors[index];
+
+            final currentTask = _currentTaskIndex < _tasks.length ? _tasks[_currentTaskIndex] : null;
+            final isTargetLane = currentTask != null && currentTask.lane == index;
+
+            double fillRatio = 0.0;
+            String labelText = _laneKeyLabels[index];
+            Color labelColor = Colors.white;
+            Color borderColor = color;
+            double borderWidth = isTargetLane ? 5.0 : 3.0;
+
+            if (isTargetLane && currentTask.isHold && currentTask.state == 1) {
+              fillRatio = currentTask.holdProgress;
+              final pct = (fillRatio * 100).round();
+              labelText = '$pct%';
+              labelColor = Colors.amberAccent;
+            } else if (isPressed) {
+              fillRatio = 1.0;
+            }
+
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: Listener(
+                  onPointerDown: (_) {
+                    setState(() {
+                      _touchDownLanes.add(index);
+                    });
+                    _onDown(cell);
+                  },
+                  onPointerUp: (_) {
+                    setState(() {
+                      _touchDownLanes.remove(index);
+                    });
+                    _onUp(cell, 0);
+                  },
+                  onPointerCancel: (_) {
+                    setState(() {
+                      _touchDownLanes.remove(index);
+                    });
+                    _onUp(cell, 0);
+                  },
+                  child: Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF14143A),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: borderColor,
+                        width: borderWidth,
+                      ),
+                      boxShadow: isPressed || isTargetLane
+                          ? [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.65),
+                                blurRadius: 14,
+                                spreadRadius: 2,
+                              )
+                            ]
+                          : [],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Stack(
+                        children: [
+                          if (fillRatio > 0)
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: FractionallySizedBox(
+                                heightFactor: fillRatio,
+                                widthFactor: 1.0,
+                                child: Container(color: color.withValues(alpha: 0.45)),
+                              ),
+                            ),
+                          Center(
+                            child: Text(
+                              labelText,
+                              style: TextStyle(
+                                color: labelColor,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 
@@ -633,7 +736,7 @@ class _KitchenCuttingPainter extends CustomPainter {
 
     // 5. Knife Target Position (Positioned strictly along cut lines 1 through totalCuts)
     final double knifeTargetX;
-    if (currentTask!.lane == 0) {
+    if (currentTask!.isHold) {
       final startCutX = leftX + pieceWidth;
       final endCutX = leftX + totalCuts * pieceWidth;
       knifeTargetX = startCutX + progress * (endCutX - startCutX);
@@ -643,7 +746,7 @@ class _KitchenCuttingPainter extends CustomPainter {
     }
 
     double knifeYOffset = -45.0;
-    if (currentTask!.lane == 0) {
+    if (currentTask!.isHold) {
       knifeYOffset = isHolding
           ? 5.0 + (sin(animationTime * 30) * 4.0)
           : -45.0;
