@@ -132,8 +132,8 @@ class _KitchenPainter extends CustomPainter {
         oval(c, Rect.fromCircle(center: Offset(x, y), radius: 7 + i % 4.0), colors[i % colors.length]);
       }
       if (isStir) {
-        final x = 296 + (action ? wiggle * 45 : 0);
-        final y = 213 + (action ? math.cos(phase * math.pi * 2) * 22 : 0);
+        final double x = 296.0 + (action ? wiggle * 45 : 0.0);
+        final double y = 213.0 + (action ? math.cos(phase * math.pi * 2) * 22 : 0.0);
         hand(c, const Offset(565, 388), Offset(x + 35, y - 48), right);
         line(c, Offset(x + 30, y - 42), Offset(x, y + 5), const Color(0xFF9CAEB0), 10);
         oval(c, Rect.fromCircle(center: Offset(x, y + 9), radius: 19), const Color(0xFFCAD6D4));
