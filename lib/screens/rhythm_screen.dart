@@ -14,6 +14,7 @@ class _Note {
   int state = 0; // 0 pending, 1 holding, 2 completed, 3 missed, 4 dropped
   double pressAt = 0;
   int timingPts = 0;
+  bool midReached = false; // Tracks if the 50% midpoint mark was hit during hold
   _Note(this.lane, this.start, this.duration, this.kind);
 }
 
@@ -24,6 +25,15 @@ const Map<String, Color> _kindColors = {
   'full': Color(0xFFFF4081),
   'endurance': Color(0xFFFFD740),
 };
+
+/// Classifies a hold result scaled relative to a specific note's target duration.
+PressResult classifyNoteHold(double heldSeconds, double targetDuration) {
+  if (targetDuration <= 0) return PressResult.none;
+  final ratio = heldSeconds / targetDuration;
+  if (ratio >= 0.90) return PressResult.full;
+  if (ratio >= 0.45) return PressResult.half;
+  return PressResult.none;
+}
 
 class RhythmGameScreen extends StatefulWidget {
   const RhythmGameScreen({super.key});
@@ -170,16 +180,26 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
           _missed++;
           _combo = 0;
           _flash('MISS', Colors.redAccent);
-        } else if (n.state == 1 && _t >= n.start + n.duration) {
-          n.state = 2;
-          _stats.add(classifyHold(n.duration));
-          _completed++;
-          _combo++;
-          _bestCombo = max(_bestCombo, _combo);
-          _longest = max(_longest, n.duration);
-          final mult = 1 + min(_combo, 10) * 0.1;
-          _score += ((n.timingPts + n.duration * 20) * mult).round();
-          _flash('HOLD COMPLETE', Colors.greenAccent);
+        } else if (n.state == 1) {
+          final held = _t - n.pressAt;
+
+          // Visual feedback trigger upon reaching 50% midpoint
+          if (!n.midReached && held >= n.duration * 0.5) {
+            n.midReached = true;
+            _flash('HALF WAY! (50%)', kHalfColor);
+          }
+
+          if (_t >= n.start + n.duration) {
+            n.state = 2;
+            _stats.add(classifyNoteHold(n.duration, n.duration));
+            _completed++;
+            _combo++;
+            _bestCombo = max(_bestCombo, _combo);
+            _longest = max(_longest, n.duration);
+            final mult = 1 + min(_combo, 10) * 0.1;
+            _score += ((n.timingPts + n.duration * 20) * mult).round();
+            _flash('HOLD COMPLETE', Colors.greenAccent);
+          }
         }
       }
       if (_notes.every((n) => n.state >= 2)) _finish();
@@ -226,7 +246,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
         setState(() {
           final held = _t - n.pressAt;
           n.state = 4;
-          final r = classifyHold(held);
+          final r = classifyNoteHold(held, n.duration);
           _stats.add(r);
           _dropped++;
           _combo = 0;
@@ -243,7 +263,6 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
     }
   }
 
-  // inside setState
   void _finish({bool early = false}) {
     _ticker.stop();
     input.clear();
@@ -344,8 +363,12 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
         const SizedBox(height: 8),
         practiceSwitch(PushConfig.practice,
             (v) => setState(() => PushConfig.practice = v)),
-        Text(pressRulesText(),
-            style: const TextStyle(fontSize: 13, color: Colors.black54)),
+        Text(
+          'Press evaluation scaled to note length:\n'
+          'Under 45% = no press   •   45% to 90% = half press   •   90%+ = full press.\n'
+          'Keys: 1x3 uses G H J.  3x3 uses T Y U / G H J / V B N.',
+          style: const TextStyle(fontSize: 13, color: Colors.black54),
+        ),
         const SizedBox(height: 20),
         FilledButton(
           onPressed: _startGame,
@@ -476,13 +499,17 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 
     if (hold != null) {
       final held = _t - hold.pressAt;
+      final pct = (hold.duration > 0 ? (held / hold.duration) * 100 : 0.0)
+          .clamp(0.0, 100.0)
+          .round();
+      final reachedMid = held >= hold.duration * 0.5;
+
       return TileStyle(
         bg: dark,
-        border: kFullColor,
-        borderWidth: 4,
-        label:
-            '${held.toStringAsFixed(1)}/${hold.duration.toStringAsFixed(1)}s',
-        labelColor: Colors.white,
+        border: reachedMid ? kFullColor : kHalfColor,
+        borderWidth: reachedMid ? 5 : 3,
+        label: '$pct%',
+        labelColor: reachedMid ? Colors.greenAccent : Colors.amberAccent,
       );
     }
     if (up != null) {
@@ -700,6 +727,39 @@ class _HighwayPainter extends CustomPainter {
         ..close();
       canvas.drawPath(
           body, Paint()..color = color.withValues(alpha: n.state == 1 ? 0.75 : 0.45));
+
+      // -----------------------------------------------------------------
+      // Midpoint bar with active glowing visual feedback when hold >= 50%
+      // -----------------------------------------------------------------
+      final pMid = (t - (n.start + n.duration / 2 - lead)) / lead;
+      if (pMid > pTail && pMid < pHead) {
+        final yM = yAt(pMid);
+        final hwM = hw(yM) * bw;
+        final bool isHeldPastMid =
+            n.state == 1 && (t - n.pressAt >= n.duration * 0.5);
+
+        if (isHeldPastMid) {
+          // Glowing aura behind the 50% midpoint line
+          canvas.drawLine(
+            Offset(cx(n.lane, yM) - hwM * 1.2, yM),
+            Offset(cx(n.lane, yM) + hwM * 1.2, yM),
+            Paint()
+              ..color = kHalfColor.withValues(alpha: 0.85)
+              ..strokeWidth = 7.0
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+          );
+        }
+
+        // Midpoint bar line
+        canvas.drawLine(
+          Offset(cx(n.lane, yM) - hwM, yM),
+          Offset(cx(n.lane, yM) + hwM, yM),
+          Paint()
+            ..color =
+                isHeldPastMid ? Colors.amberAccent : Colors.white.withValues(alpha: 0.85)
+            ..strokeWidth = isHeldPastMid ? 3.5 : 2.0,
+        );
+      }
 
       final cap = RRect.fromRectAndRadius(
         Rect.fromCenter(
