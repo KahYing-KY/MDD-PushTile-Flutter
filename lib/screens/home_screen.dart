@@ -91,15 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? null
                       : () => _go(const LightChaseScreen()),
                 ),
-                ActionCard(
-                  icon: Icons.grid_view_rounded,
-                  color: kTeal,
-                  title: 'Interim Demo (Row-by-Row)',
-                  description:
-                      'Fill a 3x3 number board by pushing the 1, 2 or 3 tile for each highlighted cell.',
-                  buttonLabel: 'Start Demo',
-                  onPressed: () => _go(const InterimDemoScreen()),
-                ),
+
                 ActionCard(
                   icon: Icons.music_note_rounded,
                   color: kGreen,
@@ -109,15 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   buttonLabel: 'Play Rhythm Game',
                   onPressed: () => _go(const RhythmGameScreen()),
                 ),
-                                ActionCard(
-                  icon: Icons.music_note_rounded,
-                  color: kGreen,
-                  title: 'Rhythm Game (Two-tiles)',
-                  description:
-                      'Hold the tiles as the notes arrive. Short, long and endurance holds. Choose your level.',
-                  buttonLabel: 'Play Rhythm Game',
-                  onPressed: () => _go(const TwoTileGameRhythmScreen()),
-                ),
+
                 ActionCard(
                   icon: Icons.tag_rounded,
                   color: kTeal,
