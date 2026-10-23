@@ -32,7 +32,7 @@ extension BoardModeInfo on BoardMode {
 }
 
 // ===========================================================================
-// Hold rules (hold time = virtual flap angle)
+// Hold rules (hold time = virtual flap percentage)
 // ===========================================================================
 enum PressResult { none, half, full }
 
@@ -46,7 +46,7 @@ class PushConfig {
   static double get fullSec => practice ? 2.0 : normalFull;
   static double get scale => fullSec / normalFull;
 
-  static const double maxAngle = 40.0;
+  static const double maxPercent = 100.0;
   static const double tileTimeoutSec = 20.0;
   static const int maxTries = 3;
 }
@@ -57,8 +57,8 @@ PressResult classifyHold(double seconds) {
   return PressResult.none;
 }
 
-double angleForHold(double seconds) =>
-    (seconds / PushConfig.fullSec).clamp(0.0, 1.0) * PushConfig.maxAngle;
+double percentForHold(double seconds) =>
+    (seconds / PushConfig.fullSec).clamp(0.0, 1.0) * PushConfig.maxPercent;
 
 class PressStats {
   int full = 0, half = 0, none = 0;
@@ -302,7 +302,7 @@ class PushTile extends StatelessWidget {
                         bottom: 4,
                         right: 8,
                         child: Text(
-                          '${angleForHold(held).round()}°',
+                          '${percentForHold(held).round()}%',
                           style: TextStyle(
                             fontSize: max(11.0, m * 0.13),
                             fontWeight: FontWeight.bold,
