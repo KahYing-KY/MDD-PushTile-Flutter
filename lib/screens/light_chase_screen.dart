@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../main.dart';
 import 'push_input.dart';
 import 'training_session.dart';
@@ -28,6 +29,7 @@ class LightChaseScreen extends StatefulWidget {
 
 class _LightChaseScreenState extends State<LightChaseScreen> {
   final PushController input = PushController();
+  final FocusNode _focusNode = FocusNode();
   final Random _rng = Random();
   final Stopwatch _total = Stopwatch();
   final Stopwatch _lit = Stopwatch();
@@ -42,7 +44,7 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
       ? _mode.cells.sublist(0, 4) 
       : const [0, 1, 2, 3];
 
-  final Set<int> _touchDownLanes = {}; // Active touch/mouse button press indices
+  final Set<int> _touchDownLanes = {}; // Active touch, mouse, and keyboard button press indices
   final Map<int, DateTime> _lanePressStart = {}; // Tracks hold start for visual fill timing
 
   List<int> _seq = [];
@@ -73,6 +75,7 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
   void dispose() {
     _ticker?.cancel();
     input.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -124,6 +127,11 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
       _phase = _Phase.playing;
     });
 
+    // Request focus for hardware keyboard input when game starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
+
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 30), (_) {
       if (!mounted || _phase != _Phase.playing) return;
@@ -138,6 +146,53 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
         setState(() {}); // Drives continuous vertical fill rendering
       }
     });
+  }
+
+  // =========================================================================
+  // Keyboard Event Handler (D, F, J, K)
+  // =========================================================================
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (_phase != _Phase.playing) return KeyEventResult.ignored;
+
+    final keyLabel = event.logicalKey.keyLabel.toUpperCase();
+    int? laneIndex;
+    if (keyLabel == 'D' || event.logicalKey == LogicalKeyboardKey.keyD) {
+      laneIndex = 0;
+    } else if (keyLabel == 'F' || event.logicalKey == LogicalKeyboardKey.keyF) {
+      laneIndex = 1;
+    } else if (keyLabel == 'J' || event.logicalKey == LogicalKeyboardKey.keyJ) {
+      laneIndex = 2;
+    } else if (keyLabel == 'K' || event.logicalKey == LogicalKeyboardKey.keyK) {
+      laneIndex = 3;
+    }
+
+    if (laneIndex == null) return KeyEventResult.ignored;
+    final cell = _laneCells[laneIndex];
+
+    if (event is KeyDownEvent) {
+      if (!_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.add(laneIndex!);
+          _lanePressStart[laneIndex] = DateTime.now();
+        });
+        _onDown(cell);
+      }
+      return KeyEventResult.handled;
+    } else if (event is KeyUpEvent) {
+      if (_touchDownLanes.contains(laneIndex)) {
+        final start = _lanePressStart.remove(laneIndex);
+        final heldSec = start != null
+            ? DateTime.now().difference(start).inMilliseconds / 1000.0
+            : 0.0;
+        setState(() {
+          _touchDownLanes.remove(laneIndex!);
+        });
+        _onUp(cell, heldSec);
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   void _onDown(int cell) {
@@ -277,16 +332,21 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(_name)),
       body: SafeArea(
-        child: PushKeyboard(
-          controller: input,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: switch (_phase) {
-                _Phase.setup => _buildSetup(),
-                _Phase.playing => _buildPlay(),
-                _Phase.done => _buildResult(),
-              },
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _handleKeyEvent,
+          child: PushKeyboard(
+            controller: input,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: switch (_phase) {
+                  _Phase.setup => _buildSetup(),
+                  _Phase.playing => _buildPlay(),
+                  _Phase.done => _buildResult(),
+                },
+              ),
             ),
           ),
         ),
@@ -434,7 +494,6 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
             } else if (isTarget) {
               borderColor = const Color(0xFFFFD740);
               borderWidth = 4.0;
-              labelText = 'PUSH';
               labelColor = Colors.white;
             }
 
@@ -502,7 +561,7 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
                                 child: Container(color: fillColor),
                               ),
                             ),
-                          // Lit target highlight banner
+                          // Lit target highlight banner showing PUSH
                           if (isTarget && !isPressed)
                             Align(
                               alignment: Alignment.topCenter,
@@ -511,7 +570,7 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
                                 padding: const EdgeInsets.symmetric(vertical: 4),
                                 color: const Color(0xFFFFD740).withValues(alpha: 0.85),
                                 child: const Text(
-                                  'TARGET',
+                                  'PUSH',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.black,
@@ -522,13 +581,13 @@ class _LightChaseScreenState extends State<LightChaseScreen> {
                                 ),
                               ),
                             ),
-                          // Center Percentage / Key Label
+                          // Center Key Label (or percentage when pressing)
                           Center(
                             child: Text(
                               labelText,
                               style: TextStyle(
                                 color: labelColor,
-                                fontSize: isTarget && !isPressed ? 24 : 22,
+                                fontSize: 22,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
