@@ -10,6 +10,7 @@ import 'burger_catch_screen.dart';
 import 'two_tile_game_rhythm.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen.dart';
+import 'sky_burger.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -118,6 +119,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Catch the falling ingredients by pushing tiles on the board.',
                   buttonLabel: 'Play Burger Catch',
                   onPressed: () => _go(const BurgerCatchScreen()),
+                ),
+                                                ActionCard(
+                  icon: Icons.lunch_dining_rounded,
+                  color: kTeal,
+                  title: 'Sky Burger',
+                  description:
+                      'Catch the falling ingredients by pressing the tiles at the right time.',
+                  buttonLabel: 'Play Sky Burger',
+                  onPressed: () => _go(const SkyBurger2DScreen()),
                 ),
                                                 ActionCard(
                   icon: Icons.lunch_dining_rounded,
