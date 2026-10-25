@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:rehab_sudoku/screens/tetris.dart';
 import '../main.dart';
 import 'light_chase_screen.dart';
 import 'interim_demo_screen.dart';
@@ -102,6 +103,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   buttonLabel: 'Play Rhythm Game',
                   onPressed: () => _go(const RhythmGameScreen()),
                 ),
+
+                  ActionCard(
+                  icon: Icons.grid_view_rounded,
+                  color: kTeal,
+                  title: 'Tetris Game',
+                  description:
+                      'Tetris game with a twist! Hold the tiles to rotate and place the falling blocks. Practice your hand coordination and timing.',
+                  buttonLabel: 'Play Tetris Game',
+                  onPressed: () => _go(const TetrisPlayScreen()),
+                ),
+
                 ActionCard(
                   icon: Icons.back_hand_rounded,
                   color: kBlue,
