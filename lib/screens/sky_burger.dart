@@ -1,0 +1,991 @@
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
+import '../main.dart';
+import 'push_input.dart';
+import 'training_session.dart';
+import 'training_history_service.dart';
+
+enum _Phase { setup, playing, collapsing, done }
+enum _DropStep { selectX, selectY, dropping }
+
+class _BurgerLayer {
+  final String name;
+  final Color color;
+  final double x; // Width offset (-1.0 to 1.0)
+  final double y; // Depth/Length offset (-1.0 to 1.0)
+  final double sizeScale;
+  _BurgerLayer(this.name, this.color, this.x, this.y, {this.sizeScale = 1.0});
+}
+
+const Map<String, Color> _ingredientColors = {
+  'Bottom Bun': Color(0xFFD7CCC8),
+  'Patty': Color(0xFF4E342E),
+  'Cheese': Color(0xFFFFD54F),
+  'Tomato': Color(0xFFEF5350),
+  'Lettuce': Color(0xFF66BB6A),
+  'Pickle': Color(0xFF81C784),
+  'Top Bun': Color(0xFFD7CCC8),
+};
+
+const List<String> _ingredientPool = [
+  'Patty', 'Cheese', 'Tomato', 'Lettuce', 'Pickle'
+];
+
+/// Exact custom lane colors from the rhythm game code
+const List<Color> _laneColors = [
+  Color(0xFFF0788C), // Lane 0 - Pink (D)
+  Color(0xFF7BD095), // Lane 1 - Green (F)
+  Color(0xFFFFC95C), // Lane 2 - Yellow (J)
+  Color(0xFF63A7EF), // Lane 3 - Blue (K)
+];
+
+const List<String> _laneKeyLabels = ['D', 'F', 'J', 'K'];
+
+/// Classifies hold ratio into Full, Half, or None (No press)
+PressResult classifyBurgerHold(double ratio) {
+  if (ratio >= 0.90) return PressResult.full;
+  if (ratio >= 0.45) return PressResult.half;
+  return PressResult.none;
+}
+
+class SkyBurger2DScreen extends StatefulWidget {
+  const SkyBurger2DScreen({super.key});
+
+  @override
+  State<SkyBurger2DScreen> createState() => _SkyBurger2DScreenState();
+}
+
+class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  final PushController input = PushController();
+  final FocusNode _focusNode = FocusNode();
+  final Random _random = Random();
+  final Set<int> _touchDownLanes = {};
+  final PressStats _stats = PressStats();
+
+  _Phase _phase = _Phase.setup;
+  Difficulty _difficulty = Difficulty.easy;
+  double _t = 0;
+  double _stepT = 0.0;
+  double _collapseProgress = 0.0;
+  double _currentOscillationSpeed = 1.5;
+  double _currentSizeScale = 1.0;
+
+  // 2x2 grid cell indices [0, 1, 2, 3]
+  final List<int> _cells = const [0, 1, 2, 3];
+  int _targetDropButton = 0;
+  double _holdProgress = 0.0; // 0.0 to 1.0 hold charge meter
+
+  int _score = 0;
+  int _combo = 1;
+  int _bestCombo = 1;
+  int _layersStacked = 0;
+  bool _collapsed = false;
+  String _message = '';
+  Color _messageColor = Colors.white;
+  double _lastAlignmentAccuracy = 100.0;
+
+  // Current falling ingredient state in 2.5D space
+  String _currentIngredient = 'Bottom Bun';
+  _DropStep _dropStep = _DropStep.selectX;
+  double _currentX = 0.0;
+  double _currentY = 0.0;
+  double _lockedX = 0.0;
+  double _lockedY = 0.0;
+  double _dropAnimProgress = 1.0;
+
+  final List<_BurgerLayer> _burgerStack = [];
+
+  @override
+  void initState() {
+    super.initState();
+    input.allowed = _cells;
+    input.onDown = _onDown;
+    input.onUp = _onUp;
+    _ticker = createTicker(_onTick);
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    input.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _startGame() {
+    trainingStarted = true;
+    input.allowed = _cells;
+    input.clear();
+    _touchDownLanes.clear();
+
+    setState(() {
+      _burgerStack.clear();
+      _burgerStack.add(_BurgerLayer('Bottom Bun', _ingredientColors['Bottom Bun']!, 0.0, 0.0, sizeScale: 1.0));
+      _spawnNextIngredient();
+      _stats.reset();
+      _score = 0;
+      _combo = 1;
+      _bestCombo = 1;
+      _layersStacked = 0;
+      _collapsed = false;
+      _collapseProgress = 0.0;
+      _lastAlignmentAccuracy = 100.0;
+      _holdProgress = 0.0;
+      _t = 0;
+      _phase = _Phase.playing;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
+
+    if (_ticker.isActive) _ticker.stop();
+    _ticker.start();
+  }
+
+  void _spawnNextIngredient() {
+    _currentIngredient = _ingredientPool[_random.nextInt(_ingredientPool.length)];
+    _dropStep = _DropStep.selectX;
+    _stepT = 0.0;
+    _currentX = 0.0;
+    _currentY = 0.0;
+    _dropAnimProgress = 1.0;
+    _targetDropButton = _random.nextInt(4);
+    _holdProgress = 0.0;
+
+    if (_difficulty == Difficulty.easy) {
+      _currentOscillationSpeed = 1.5;
+    } else if (_difficulty == Difficulty.medium) {
+      _currentOscillationSpeed = 1.8 + _random.nextDouble() * 1.5;
+    } else {
+      _currentOscillationSpeed = 2.4 + _random.nextDouble() * 2.2;
+    }
+
+    if (_difficulty == Difficulty.hard) {
+      _currentSizeScale = 0.7 + _random.nextDouble() * 0.6;
+    } else {
+      _currentSizeScale = 1.0;
+    }
+
+    _message = 'Step 1: Hold [${_laneKeyLabels[_targetDropButton]}] to 100% to lock X-Axis';
+    _messageColor = _laneColors[_targetDropButton];
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (_phase != _Phase.playing) return KeyEventResult.ignored;
+
+    int? laneIndex;
+    final keyLabel = event.logicalKey.keyLabel.toUpperCase();
+    if (keyLabel == 'D' || event.logicalKey == LogicalKeyboardKey.keyD) {
+      laneIndex = 0;
+    } else if (keyLabel == 'F' || event.logicalKey == LogicalKeyboardKey.keyF) {
+      laneIndex = 1;
+    } else if (keyLabel == 'J' || event.logicalKey == LogicalKeyboardKey.keyJ) {
+      laneIndex = 2;
+    } else if (keyLabel == 'K' || event.logicalKey == LogicalKeyboardKey.keyK) {
+      laneIndex = 3;
+    }
+
+    if (laneIndex == null) return KeyEventResult.ignored;
+
+    if (event is KeyDownEvent) {
+      if (!_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.add(laneIndex!);
+        });
+        _handleCellDown(laneIndex);
+      }
+      return KeyEventResult.handled;
+    } else if (event is KeyUpEvent) {
+      if (_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.remove(laneIndex!);
+        });
+        _handleCellUp(laneIndex);
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  void _handleCellDown(int cell) {
+    if (_phase != _Phase.playing || _dropStep == _DropStep.dropping) return;
+
+    if (cell != _targetDropButton) {
+      setState(() {
+        _message = 'Wrong button! Hold [${_laneKeyLabels[_targetDropButton]}]!';
+        _messageColor = Colors.orangeAccent;
+        _stats.add(PressResult.none);
+        _holdProgress = 0.0;
+      });
+    }
+  }
+
+  void _handleCellUp(int cell) {
+    if (cell == _targetDropButton && _dropStep != _DropStep.dropping) {
+      final pressResult = classifyBurgerHold(_holdProgress);
+      _stats.add(pressResult);
+
+      setState(() {
+        if (pressResult == PressResult.full) {
+          _completeHoldAction();
+        } else {
+          _message = pressResult == PressResult.half
+              ? 'Half Press! Full hold (90%+) required to lock/drop.'
+              : 'Released too early! Full hold required to lock/drop.';
+          _messageColor = Colors.orangeAccent;
+          _holdProgress = 0.0; // Reset hold, action rejected
+        }
+      });
+    }
+  }
+
+  void _onDown(int cell) {
+    _handleCellDown(cell);
+  }
+
+  void _onUp(int cell, double sec) {
+    _handleCellUp(cell);
+  }
+
+  bool _isTargetHeld() {
+    return input.isDown(_cells[_targetDropButton]) || _touchDownLanes.contains(_targetDropButton);
+  }
+
+  void _onTick(Duration e) {
+    final double newT = e.inMicroseconds / 1e6;
+    final double dt = newT - _t;
+    _t = newT;
+
+    if (_phase == _Phase.playing) {
+      final bool isHoldingTarget = _dropStep != _DropStep.dropping && _isTargetHeld();
+
+      // If holding target, charge progress and PAUSE oscillation time (_stepT)
+      if (isHoldingTarget) {
+        _holdProgress = (_holdProgress + dt / 0.6).clamp(0.0, 1.0);
+        if (_holdProgress >= 1.0) {
+          _stats.add(PressResult.full);
+          _completeHoldAction();
+        }
+      } else {
+        // Only advance oscillation time when NOT holding the target button
+        _stepT += dt;
+      }
+
+      if (_dropStep == _DropStep.selectX) {
+        _currentX = 1.4 * sin(_stepT * _currentOscillationSpeed * pi);
+      } else if (_dropStep == _DropStep.selectY) {
+        _currentY = 1.4 * sin(_stepT * _currentOscillationSpeed * pi);
+      } else if (_dropStep == _DropStep.dropping) {
+        _dropAnimProgress += 0.08;
+        if (_dropAnimProgress >= 1.0) {
+          _dropAnimProgress = 1.0;
+          _evaluatePlacement();
+        }
+      }
+      setState(() {});
+    } else if (_phase == _Phase.collapsing) {
+      _collapseProgress += 0.04;
+      if (_collapseProgress >= 1.0) {
+        _collapseProgress = 1.0;
+        _phase = _Phase.done;
+        _finishSession();
+      }
+      setState(() {});
+    }
+  }
+
+  void _completeHoldAction() {
+    if (_dropStep == _DropStep.selectX) {
+      _lockedX = _currentX;
+      _dropStep = _DropStep.selectY;
+      _stepT = 0.0;
+      _currentY = 0.0;
+      _targetDropButton = _random.nextInt(4);
+      _holdProgress = 0.0;
+      _message = 'X-Axis Locked! Hold [${_laneKeyLabels[_targetDropButton]}] for Y-Axis';
+      _messageColor = _laneColors[_targetDropButton];
+    } else if (_dropStep == _DropStep.selectY) {
+      _lockedY = _currentY;
+      _dropStep = _DropStep.dropping;
+      _dropAnimProgress = 0.0;
+      _holdProgress = 0.0;
+    }
+  }
+
+  void _evaluatePlacement() {
+    final prevLayer = _burgerStack.last;
+    final deltaX = _lockedX - prevLayer.x;
+    final deltaY = _lockedY - prevLayer.y;
+    final distanceToPrev = sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    const maxStableOffset = 1.1;
+    _lastAlignmentAccuracy = ((1.0 - (distanceToPrev / maxStableOffset)).clamp(0.0, 1.0)) * 100;
+
+    if (distanceToPrev > maxStableOffset) {
+      _collapsed = true;
+      _phase = _Phase.collapsing;
+      _collapseProgress = 0.0;
+      _message = 'TOWER COLLAPSED! Too imbalanced!';
+      _messageColor = Colors.redAccent;
+      input.clear();
+      _touchDownLanes.clear();
+      return;
+    }
+
+    int pointsEarned = 0;
+    if (distanceToPrev < 0.25) {
+      pointsEarned = 350 + (_combo * 60);
+      _message = 'PERFECT ALIGNMENT! (+${pointsEarned} pts)';
+      _messageColor = Colors.greenAccent;
+      _combo++;
+    } else if (distanceToPrev < 0.6) {
+      pointsEarned = 180 + (_combo * 25);
+      _message = 'GOOD STACK! (+${pointsEarned} pts)';
+      _messageColor = Colors.lightBlueAccent;
+      _combo++;
+    } else {
+      _combo = 1;
+      pointsEarned = 60;
+      _message = 'UNSTABLE STACK! (+${pointsEarned} pts)';
+      _messageColor = Colors.orangeAccent;
+    }
+
+    _score += pointsEarned;
+    _bestCombo = max(_bestCombo, _combo);
+    _layersStacked++;
+
+    _burgerStack.add(_BurgerLayer(
+      _currentIngredient,
+      _ingredientColors[_currentIngredient] ?? Colors.brown,
+      _lockedX,
+      _lockedY,
+      sizeScale: _currentSizeScale,
+    ));
+
+    _spawnNextIngredient();
+  }
+
+  void _finishSession() {
+    TrainingHistoryService.instance.addSession(TrainingSession(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      activity: 'Sky Burger 2.5D Infinite',
+      date: DateTime.now(),
+      difficulty: _difficulty.label,
+      durationSeconds: _t.round(),
+      correctAttempts: _layersStacked,
+      incorrectAttempts: _collapsed ? 1 : 0,
+      fullPresses: _stats.full,
+      halfPresses: _stats.half,
+      noPresses: _stats.none,
+      completed: !_collapsed,
+      notes: 'Score $_score | Ingredients Stacked $_layersStacked | Full: ${_stats.full}, Half: ${_stats.half}, None: ${_stats.none} ${_collapsed ? "[Collapsed]" : ""}',
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sky Burger (Endless 2.5D Stacker)')),
+      body: SafeArea(
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _handleKeyEvent,
+          child: PushKeyboard(
+            controller: input,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: switch (_phase) {
+                  _Phase.setup => _setupView(),
+                  _Phase.playing || _Phase.collapsing => _playView(),
+                  _Phase.done => _summaryView(),
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _setupView() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Icon(Icons.fastfood_rounded, size: 72, color: Colors.orangeAccent),
+        const SizedBox(height: 8),
+        const Text('Sky Burger Endless 2.5D',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        const Text(
+          'Endless 3D isometric stacking with Full Press requirement!\n\n'
+          '• Hold target button to 100% (Full Press) to lock axis and drop ingredients.\n'
+          '• Half presses or early releases will reject the action and require a full hold.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 15),
+        ),
+        const SizedBox(height: 20),
+        chipRow<Difficulty>(
+          title: 'Level',
+          values: Difficulty.values,
+          selected: _difficulty,
+          label: (d) => d.label,
+          onSelected: (d) => setState(() => _difficulty = d),
+        ),
+        const SizedBox(height: 24),
+        FilledButton(
+          onPressed: _startGame,
+          style: FilledButton.styleFrom(
+              backgroundColor: Colors.orange, minimumSize: const Size.fromHeight(56)),
+          child: const Text('Start Endless Grilling',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Back to Home'),
+        ),
+      ],
+    );
+  }
+
+  Widget _playView() {
+    return Container(
+      color: const Color(0xFF0F0F23),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Score: $_score',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _lastAlignmentAccuracy > 80 ? Colors.green.withValues(alpha: 0.3) : Colors.orange.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _lastAlignmentAccuracy > 80 ? Colors.greenAccent : Colors.orangeAccent),
+                ),
+                child: Text('Alignment: ${_lastAlignmentAccuracy.toStringAsFixed(0)}%',
+                    style: TextStyle(color: _lastAlignmentAccuracy > 80 ? Colors.greenAccent : Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+              Text('Ingredients: $_layersStacked',
+                  style: const TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Combo: x$_combo', style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 15)),
+              Text('Best: x$_bestCombo', style: const TextStyle(color: Colors.white60, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 32,
+            child: Center(
+              child: Text(_message,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _messageColor)),
+            ),
+          ),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: CustomPaint(
+                painter: _Burger25DPainter(
+                  burgerStack: _burgerStack,
+                  currentIngredient: _currentIngredient,
+                  currentSizeScale: _currentSizeScale,
+                  dropStep: _dropStep,
+                  currentX: _currentX,
+                  currentY: _currentY,
+                  lockedX: _lockedX,
+                  dropAnimProgress: _dropAnimProgress,
+                  phase: _phase,
+                  collapseProgress: _collapseProgress,
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildFourButtonRow(),
+          const SizedBox(height: 8),
+          pressStatsBar(_stats, dark: true),
+          TextButton(
+            onPressed: () {
+              _ticker.stop();
+              setState(() => _phase = _Phase.done);
+              _finishSession();
+            },
+            child: const Text('End Session', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 4-Button row with full/half/no press visual feedback
+  Widget _buildFourButtonRow() {
+    return AnimatedBuilder(
+      animation: input,
+      builder: (context, _) {
+        return Row(
+          children: List.generate(4, (index) {
+            final cell = _cells[index];
+            final isPressed = input.isDown(cell) || _touchDownLanes.contains(index);
+            final color = _laneColors[index];
+            final bool isTarget = (index == _targetDropButton && _phase == _Phase.playing);
+
+            double fillRatio = 0.0;
+            String labelText = _laneKeyLabels[index];
+            Color labelColor = Colors.white;
+            Color borderColor = color;
+            double borderWidth = 2.0;
+            Color fillColor = color.withValues(alpha: 0.45);
+
+            if (isTarget && isPressed) {
+              fillRatio = _holdProgress;
+              final pct = (fillRatio * 100).round();
+              labelText = '$pct%';
+              final pressRes = classifyBurgerHold(fillRatio);
+              if (pressRes == PressResult.full) {
+                labelColor = Colors.greenAccent;
+                borderColor = Colors.greenAccent;
+                borderWidth = 4.0;
+                fillColor = Colors.greenAccent.withValues(alpha: 0.4);
+              } else if (pressRes == PressResult.half) {
+                labelColor = Colors.lightBlueAccent;
+                borderColor = Colors.lightBlueAccent;
+                borderWidth = 3.0;
+                fillColor = Colors.lightBlueAccent.withValues(alpha: 0.4);
+              } else {
+                labelColor = Colors.amberAccent;
+                borderColor = Colors.amberAccent;
+                borderWidth = 3.0;
+                fillColor = Colors.amberAccent.withValues(alpha: 0.4);
+              }
+            } else if (isPressed) {
+              fillRatio = 1.0;
+            }
+
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 18,
+                      child: Center(
+                        child: isTarget
+                            ? const Text(
+                                '★ TARGET ★',
+                                style: TextStyle(
+                                  color: Colors.amberAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Listener(
+                      onPointerDown: (_) {
+                        setState(() {
+                          _touchDownLanes.add(index);
+                        });
+                        _handleCellDown(index);
+                      },
+                      onPointerUp: (_) {
+                        setState(() {
+                          _touchDownLanes.remove(index);
+                        });
+                        _handleCellUp(index);
+                      },
+                      onPointerCancel: (_) {
+                        setState(() {
+                          _touchDownLanes.remove(index);
+                        });
+                        _handleCellUp(index);
+                      },
+                      child: Container(
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF14143A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: borderColor,
+                            width: borderWidth,
+                          ),
+                          boxShadow: isPressed || (isTarget && isPressed)
+                              ? [
+                                  BoxShadow(
+                                    color: borderColor.withValues(alpha: 0.65),
+                                    blurRadius: 14,
+                                    spreadRadius: 2,
+                                  )
+                                ]
+                              : [],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Stack(
+                            children: [
+                              if (fillRatio > 0)
+                                Align(
+                                  alignment: Alignment.bottomCenter,
+                                  child: FractionallySizedBox(
+                                    heightFactor: fillRatio,
+                                    widthFactor: 1.0,
+                                    child: Container(color: fillColor),
+                                  ),
+                                ),
+                              Center(
+                                child: Text(
+                                  labelText,
+                                  style: TextStyle(
+                                    color: labelColor,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
+  Widget _summaryView() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Icon(_collapsed ? Icons.warning_rounded : Icons.emoji_events, size: 64, color: _collapsed ? Colors.redAccent : Colors.amber),
+        const SizedBox(height: 8),
+        Text(_collapsed ? 'Tower Collapsed!' : 'Stack Session Complete!',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Card(
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _summaryRow('Final Score', '$_score'),
+                const Divider(),
+                _summaryRow('Ingredients Stacked', '$_layersStacked'),
+                const Divider(),
+                _summaryRow('Best Combo', 'x$_bestCombo'),
+                const Divider(),
+                _summaryRow('Full / Half / No Press', '${_stats.full} / ${_stats.half} / ${_stats.none}'),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: () => setState(() => _phase = _Phase.setup),
+          icon: const Icon(Icons.replay),
+          label: const Text('Try Again'),
+          style: FilledButton.styleFrom(
+              backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 14)),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Back to Home'),
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryRow(String label, String value) => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 16, color: Colors.black87)),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ],
+      );
+}
+
+class _Burger25DPainter extends CustomPainter {
+  final List<_BurgerLayer> burgerStack;
+  final String currentIngredient;
+  final double currentSizeScale;
+  final _DropStep dropStep;
+  final double currentX;
+  final double currentY;
+  final double lockedX;
+  final double dropAnimProgress;
+  final _Phase phase;
+  final double collapseProgress;
+
+  _Burger25DPainter({
+    required this.burgerStack,
+    required this.currentIngredient,
+    required this.currentSizeScale,
+    required this.dropStep,
+    required this.currentX,
+    required this.currentY,
+    required this.lockedX,
+    required this.dropAnimProgress,
+    required this.phase,
+    required this.collapseProgress,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final wallRect = Offset.zero & size;
+    canvas.drawRect(
+      wallRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1B143F), Color(0xFF0C091E)],
+        ).createShader(wallRect),
+    );
+
+    final tilePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.03)
+      ..strokeWidth = 1.0;
+    for (double x = 0; x < size.width; x += 45) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height * 0.7), tilePaint);
+    }
+    for (double y = 0; y < size.height * 0.7; y += 45) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), tilePaint);
+    }
+
+    final glowPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(0, -0.8),
+        radius: 0.8,
+        colors: [
+          Colors.pinkAccent.withValues(alpha: 0.12),
+          Colors.cyanAccent.withValues(alpha: 0.04),
+          Colors.transparent,
+        ],
+      ).createShader(wallRect);
+    canvas.drawRect(wallRect, glowPaint);
+
+    final counterRect = Rect.fromLTWH(0, size.height * 0.65, size.width, size.height * 0.35);
+    canvas.drawRect(
+      counterRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF2A244E), Color(0xFF120E26)],
+        ).createShader(counterRect),
+    );
+    canvas.drawLine(
+      Offset(0, size.height * 0.65),
+      Offset(size.width, size.height * 0.65),
+      Paint()
+        ..color = Colors.cyanAccent.withValues(alpha: 0.4)
+        ..strokeWidth = 3.0,
+    );
+
+    const double layerHeight = 22.0;
+    final double stackHeightZ = burgerStack.length * layerHeight;
+    final double cameraPanY = max(0.0, stackHeightZ - 120.0);
+
+    final center = Offset(size.width / 2, size.height * 0.68 + cameraPanY);
+
+    Offset isoToScreen(double x, double y, double zHeight) {
+      final double screenX = center.dx + (x - y) * 55.0;
+      final double screenY = center.dy - zHeight + (x + y) * 20.0;
+      return Offset(screenX, screenY);
+    }
+
+    final platePaint = Paint()..color = Colors.white.withValues(alpha: 0.15);
+    final plateCenter = isoToScreen(0, 0, -15.0);
+    canvas.drawOval(
+      Rect.fromCenter(center: plateCenter, width: 220, height: 110),
+      platePaint,
+    );
+
+    final bullseyePaint = Paint()
+      ..color = Colors.cyanAccent.withValues(alpha: 0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    canvas.drawOval(
+      Rect.fromCenter(center: plateCenter, width: 50, height: 25),
+      bullseyePaint,
+    );
+    canvas.drawLine(
+      isoToScreen(-0.3, 0, -15.0),
+      isoToScreen(0.3, 0, -15.0),
+      bullseyePaint,
+    );
+    canvas.drawLine(
+      isoToScreen(0, -0.3, -15.0),
+      isoToScreen(0, 0.3, -15.0),
+      bullseyePaint,
+    );
+
+    for (int i = 0; i < burgerStack.length; i++) {
+      final layer = burgerStack[i];
+      double x = layer.x;
+      double y = layer.y;
+      double zH = i * layerHeight;
+
+      if (phase == _Phase.collapsing) {
+        final scatterFactor = (i + 1) * 0.25;
+        final dir = (i % 2 == 0 ? 1.0 : -1.0);
+        x += collapseProgress * scatterFactor * dir * 1.8;
+        y += collapseProgress * scatterFactor * (i % 3 == 0 ? 1.0 : -0.8) * 1.5;
+        zH = max(-10.0, zH - (collapseProgress * collapseProgress) * (200.0 + i * 15.0));
+      }
+
+      final Offset layerCenter = isoToScreen(x, y, zH);
+      _drawIsometricLayer(canvas, layerCenter, layer.name, layer.color, scale: layer.sizeScale);
+    }
+
+    if (phase == _Phase.playing) {
+      double targetX = currentX;
+      double targetY = 0.0;
+      if (dropStep == _DropStep.selectY || dropStep == _DropStep.dropping) {
+        targetX = lockedX;
+        targetY = currentY;
+      }
+
+      final Offset ghostCenter = isoToScreen(targetX, targetY, stackHeightZ);
+      final ghostPaint = Paint()
+        ..color = (dropStep == _DropStep.selectX ? Colors.cyanAccent : Colors.pinkAccent)
+            .withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+
+      canvas.drawOval(
+        Rect.fromCenter(center: ghostCenter, width: 140 * currentSizeScale, height: 64 * currentSizeScale),
+        ghostPaint,
+      );
+
+      final prevLayer = burgerStack.last;
+      final Offset immediatePrevCenter = isoToScreen(prevLayer.x, prevLayer.y, stackHeightZ - layerHeight);
+      canvas.drawLine(
+        immediatePrevCenter,
+        ghostCenter,
+        Paint()
+          ..color = Colors.greenAccent.withValues(alpha: 0.4)
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke,
+      );
+
+      if (dropStep != _DropStep.dropping || dropAnimProgress < 1.0) {
+        double renderX = currentX;
+        double renderY = currentY;
+        double startZ = stackHeightZ + 160.0;
+
+        if (dropStep == _DropStep.selectY) {
+          renderX = lockedX;
+        } else if (dropStep == _DropStep.dropping) {
+          renderX = lockedX;
+          renderY = currentY;
+          startZ = uiLerp(startZ, stackHeightZ, dropAnimProgress);
+        }
+
+        final shadowPaint = Paint()..color = Colors.black.withValues(alpha: 0.45);
+        canvas.drawOval(
+          Rect.fromCenter(center: ghostCenter, width: 120 * currentSizeScale, height: 50 * currentSizeScale),
+          shadowPaint,
+        );
+
+        final Offset fallingCenter = isoToScreen(renderX, renderY, startZ);
+        _drawIsometricLayer(
+          canvas,
+          fallingCenter,
+          currentIngredient,
+          _ingredientColors[currentIngredient] ?? Colors.brown,
+          scale: currentSizeScale,
+          isFalling: false,
+        );
+      }
+    }
+  }
+
+  void _drawIsometricLayer(Canvas canvas, Offset center, String name, Color color, {double scale = 1.0, bool isFalling = false}) {
+    const double baseThickness = 18.0;
+    final double thickness = baseThickness * scale;
+    final double baseWidth = 140.0 * scale;
+    final double baseHeight = 64.0 * scale;
+
+    final bottomCenter = center.translate(0, thickness);
+
+    final sideColor = Color.lerp(color, Colors.black, 0.35)!;
+    final sidePaint = Paint()..color = sideColor;
+
+    final cylinderSide = Path()
+      ..moveTo(center.dx - (baseWidth / 2), center.dy)
+      ..lineTo(bottomCenter.dx - (baseWidth / 2), bottomCenter.dy)
+      ..arcTo(Rect.fromCenter(center: bottomCenter, width: baseWidth, height: baseHeight), pi, pi, false)
+      ..lineTo(center.dx + (baseWidth / 2), center.dy)
+      ..arcTo(Rect.fromCenter(center: center, width: baseWidth, height: baseHeight), 0, -pi, false)
+      ..close();
+
+    canvas.drawPath(cylinderSide, sidePaint);
+    canvas.drawOval(
+      Rect.fromCenter(center: bottomCenter, width: baseWidth, height: baseHeight),
+      sidePaint,
+    );
+
+    final topRect = Rect.fromCenter(center: center, width: baseWidth, height: baseHeight);
+    final topPaint = Paint()..color = color;
+    canvas.drawOval(topRect, topPaint);
+
+    final highlightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.25)
+      ..style = PaintingStyle.fill;
+    canvas.drawOval(
+      Rect.fromCenter(center: center.translate(-22 * scale, -8 * scale), width: 85 * scale, height: 30 * scale),
+      highlightPaint,
+    );
+
+    if (name == 'Tomato') {
+      final seedPaint = Paint()..color = Colors.white70;
+      canvas.drawCircle(center.translate(-22 * scale, -6 * scale), 3.5 * scale, seedPaint);
+      canvas.drawCircle(center.translate(22 * scale, 4 * scale), 3.5 * scale, seedPaint);
+    } else if (name == 'Cheese') {
+      final dripPath = Path()
+        ..moveTo(center.dx + (50 * scale), center.dy + (12 * scale))
+        ..quadraticBezierTo(center.dx + (75 * scale), center.dy + (30 * scale), center.dx + (65 * scale), center.dy + (40 * scale))
+        ..quadraticBezierTo(center.dx + (55 * scale), center.dy + (30 * scale), center.dx + (40 * scale), center.dy + (22 * scale))
+        ..close();
+      canvas.drawPath(dripPath, topPaint);
+    } else if (name == 'Lettuce') {
+      final leafBorder = Paint()
+        ..color = Colors.green.shade300
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5 * scale;
+      canvas.drawOval(Rect.fromCenter(center: center, width: (baseWidth + 6), height: (baseHeight + 4)), leafBorder);
+    }
+  }
+
+  double uiLerp(double a, double b, double t) => a + (b - a) * t;
+
+  @override
+  bool shouldRepaint(covariant _Burger25DPainter oldDelegate) => true;
+}

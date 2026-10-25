@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import '../main.dart';
 import 'push_input.dart';
 import 'training_session.dart';
@@ -58,10 +59,11 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 
   late final Ticker _ticker;
   final PushController input = PushController();
+  final FocusNode _focusNode = FocusNode();
   final Random _random = Random();
   final List<_Note> _notes = [];
   final PressStats _stats = PressStats();
-  final Set<int> _touchDownLanes = {}; // Tracks active touch/mouse button presses
+  final Set<int> _touchDownLanes = {}; // Tracks active touch/mouse/keyboard button presses
 
   _RPhase _phase = _RPhase.setup;
   final BoardMode _mode = BoardMode.row;
@@ -125,6 +127,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   void dispose() {
     _ticker.dispose();
     input.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -174,6 +177,12 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
       _t = 0;
       _phase = _RPhase.playing;
     });
+    
+    // Request focus for keyboard input when game starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
+
     if (_ticker.isActive) _ticker.stop();
     _ticker.start();
   }
@@ -184,8 +193,49 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   }
 
   // ---------------------------------------------------------------------
-  // Game loop
+  // Game loop & Keyboard handler mapping (D, F, J, K)
   // ---------------------------------------------------------------------
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (_phase != _RPhase.playing) return KeyEventResult.ignored;
+
+    // Map keys D, F, J, K to lane indices 0, 1, 2, 3
+    final keyLabel = event.logicalKey.keyLabel.toUpperCase();
+    int? laneIndex;
+    if (keyLabel == 'D' || event.logicalKey == LogicalKeyboardKey.keyD) {
+      laneIndex = 0;
+    } else if (keyLabel == 'F' || event.logicalKey == LogicalKeyboardKey.keyF) {
+      laneIndex = 1;
+    } else if (keyLabel == 'J' || event.logicalKey == LogicalKeyboardKey.keyJ) {
+      laneIndex = 2;
+    } else if (keyLabel == 'K' || event.logicalKey == LogicalKeyboardKey.keyK) {
+      laneIndex = 3;
+    }
+
+    if (laneIndex == null) return KeyEventResult.ignored;
+    final cell = _laneCells[laneIndex];
+
+    if (event is KeyDownEvent) {
+      // Prevent duplicate trigger on key repeat
+      if (!_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.add(laneIndex!);
+        });
+        _onDown(cell);
+      }
+      return KeyEventResult.handled;
+    } else if (event is KeyUpEvent) {
+      if (_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.remove(laneIndex!);
+        });
+        _onUp(cell, 0);
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   void _onTick(Duration e) {
     _t = e.inMicroseconds / 1e6;
     if (_phase != _RPhase.playing) return;
@@ -315,16 +365,21 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
     return Scaffold(
       appBar: AppBar(title: const Text('Rhythm Game (1x4)')),
       body: SafeArea(
-        child: PushKeyboard(
-          controller: input,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: switch (_phase) {
-                _RPhase.setup => _setup(),
-                _RPhase.playing => _play(),
-                _RPhase.done => _summary(),
-              },
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _handleKeyEvent,
+          child: PushKeyboard(
+            controller: input,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: switch (_phase) {
+                  _RPhase.setup => _setup(),
+                  _RPhase.playing => _play(),
+                  _RPhase.done => _summary(),
+                },
+              ),
             ),
           ),
         ),

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import '../main.dart';
 import 'push_input.dart';
 import 'training_session.dart';
@@ -84,9 +85,10 @@ class _FourTileKitchenCutterScreenState
     with SingleTickerProviderStateMixin {
   final List<int> _cells = const [0, 1, 2, 3];
   final PushController input = PushController();
+  final FocusNode _focusNode = FocusNode();
   final Random _random = Random();
   final PressStats _stats = PressStats();
-  final Set<int> _touchDownLanes = {}; // Tracks active touch/mouse button presses
+  final Set<int> _touchDownLanes = {}; // Tracks active touch, mouse, and keyboard button presses
 
   final List<_IngredientTask> _tasks = [];
   late final Ticker _ticker;
@@ -130,6 +132,7 @@ class _FourTileKitchenCutterScreenState
   void dispose() {
     _ticker.dispose();
     input.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -167,12 +170,60 @@ class _FourTileKitchenCutterScreenState
       _feedbackColor = Colors.greenAccent;
       _phase = _Phase.cutting;
     });
+
+    // Request focus for keyboard input when game starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
+
     _ticker.start();
   }
 
   void _flash(String text, Color color) {
     _feedback = text;
     _feedbackColor = color;
+  }
+
+  // ---------------------------------------------------------------------
+  // Keyboard Event Handler (D, F, J, K)
+  // ---------------------------------------------------------------------
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (_phase != _Phase.cutting) return KeyEventResult.ignored;
+
+    final keyLabel = event.logicalKey.keyLabel.toUpperCase();
+    int? laneIndex;
+    if (keyLabel == 'D' || event.logicalKey == LogicalKeyboardKey.keyD) {
+      laneIndex = 0;
+    } else if (keyLabel == 'F' || event.logicalKey == LogicalKeyboardKey.keyF) {
+      laneIndex = 1;
+    } else if (keyLabel == 'J' || event.logicalKey == LogicalKeyboardKey.keyJ) {
+      laneIndex = 2;
+    } else if (keyLabel == 'K' || event.logicalKey == LogicalKeyboardKey.keyK) {
+      laneIndex = 3;
+    }
+
+    if (laneIndex == null) return KeyEventResult.ignored;
+    final cell = _cells[laneIndex];
+
+    if (event is KeyDownEvent) {
+      if (!_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.add(laneIndex!);
+        });
+        _onDown(cell);
+      }
+      return KeyEventResult.handled;
+    } else if (event is KeyUpEvent) {
+      if (_touchDownLanes.contains(laneIndex)) {
+        setState(() {
+          _touchDownLanes.remove(laneIndex!);
+        });
+        _onUp(cell, 0);
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   void _tick(Duration elapsed) {
@@ -289,16 +340,21 @@ class _FourTileKitchenCutterScreenState
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Kitchen Cutter Challenge (4-Tile)')),
         body: SafeArea(
-          child: PushKeyboard(
-            controller: input,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: switch (_phase) {
-                  _Phase.setup => _setup(),
-                  _Phase.cutting => _play(),
-                  _Phase.done => _summary(),
-                },
+          child: Focus(
+            focusNode: _focusNode,
+            autofocus: true,
+            onKeyEvent: _handleKeyEvent,
+            child: PushKeyboard(
+              controller: input,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: switch (_phase) {
+                    _Phase.setup => _setup(),
+                    _Phase.cutting => _play(),
+                    _Phase.done => _summary(),
+                  },
+                ),
               ),
             ),
           ),
@@ -319,7 +375,8 @@ class _FourTileKitchenCutterScreenState
             '• Pink (D) • Green (F) • Yellow (J) • Blue (K)\n\n'
             '• HOLD tasks: Press and hold the target colored tile continuously.\n'
             '• CHOP tasks: Tap the target tile rhythmic times per cut.\n'
-            '• Tough items require multiple chops/holds per cut seam!',
+            '• Tough items require multiple chops/holds per cut seam!\n'
+            '• Controls: Use on-screen pads or keyboard keys D  F  J  K.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15),
           ),
