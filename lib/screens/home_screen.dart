@@ -101,16 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   buttonLabel: 'Play Rhythm Game',
                   onPressed: () => _go(const RhythmGameScreen()),
                 ),
-
-                ActionCard(
-                  icon: Icons.tag_rounded,
-                  color: kTeal,
-                  title: 'Tic-Tac-Toe',
-                  description:
-                      'Beat the computer by pushing tiles on the 3x3 board with a full press.',
-                  buttonLabel: 'Play Tic-Tac-Toe',
-                  onPressed: () => _go(const TicTacToeScreen()),
-                ),
                 ActionCard(
                   icon: Icons.back_hand_rounded,
                   color: kBlue,
