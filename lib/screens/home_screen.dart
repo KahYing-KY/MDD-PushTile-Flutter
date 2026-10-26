@@ -7,6 +7,7 @@ import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';
+import 'treasure_hunt.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -97,6 +98,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Hold the tiles as the notes arrive. Short, long and endurance holds. Choose your level.',
                   buttonLabel: 'Play Rhythm Game',
                   onPressed: () => _go(const RhythmGameScreen()),
+                ),
+
+                ActionCard(
+                  icon: Icons.diamond_rounded,
+                  color: kGreen,
+                  title: 'Treasure Hunt',
+                  description:
+                      'Observe the minimap clues to find the treasure in the shortest time possible.',
+                  buttonLabel: 'Play Treasure Hunt',
+                  onPressed: () => _go(const TreasureHunt2D5Screen()),
                 ),
 
                 ActionCard(
