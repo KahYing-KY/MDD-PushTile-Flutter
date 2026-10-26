@@ -27,7 +27,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
     'Hold & Reach',
     'Sky Burger',
     'Kitchen Cutter',
-    'Treasure Hunt',
+    'Treasure Hunt 2.5D',
+    'Cooking Studio',
     'Cool-Down',
   ];
 
@@ -151,7 +152,10 @@ class _ProgressScreenState extends State<ProgressScreen> {
         builder: (context, child) {
           final all = history.sessions; // newest first
           final byActivity = all
-              .where((s) => filter == 'All' || s.activity == filter)
+              .where((s) =>
+                  filter == 'All' ||
+                  s.activity == filter ||
+                  s.activity.startsWith('$filter '))
               .toList();
 
           final today = _dayOf(DateTime.now());
@@ -662,6 +666,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   IconData _iconFor(String activity) {
+    if (activity.startsWith('Cooking Studio')) {
+      return Icons.soup_kitchen_rounded;
+    }
     switch (activity) {
       case 'Interim Demo':
         return Icons.view_module;
@@ -675,7 +682,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
         return Icons.fastfood_rounded;
       case 'Kitchen Cutter':
         return Icons.kitchen_rounded;
-      case 'Treasure Hunt':
+      case 'Treasure Hunt 2.5D':
         return Icons.castle_rounded;
       default:
         return Icons.flash_on_rounded;
@@ -683,6 +690,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   Color _colorFor(String activity) {
+    if (activity.startsWith('Cooking Studio')) {
+      return Colors.amber.shade800;
+    }
     switch (activity) {
       case 'Cool-Down':
         return kGreen;
@@ -696,7 +706,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
         return Colors.orangeAccent;
       case 'Kitchen Cutter':
         return Colors.deepOrange;
-      case 'Treasure Hunt':
+      case 'Treasure Hunt 2.5D':
         return Colors.amber;
       default:
         return kBlue;
@@ -796,7 +806,10 @@ class _ProgressScreenState extends State<ProgressScreen> {
   Widget _activityTable(List<TrainingSession> list) {
     final rows = <DataRow>[];
     for (final name in _activities.where((a) => a != 'All')) {
-      final items = list.where((s) => s.activity == name).toList();
+      final items = list
+          .where((s) =>
+              s.activity == name || s.activity.startsWith('$name '))
+          .toList();
       if (items.isEmpty) continue;
       final acc = _avgAccuracy(items);
       final rate = _fullRate(items);
