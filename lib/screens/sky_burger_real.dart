@@ -347,7 +347,7 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   void _finishSession() {
     TrainingHistoryService.instance.addSession(TrainingSession(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
-      activity: 'Sky Burger 1D Catch',
+      activity: 'Sky Burger',
       date: DateTime.now(),
       difficulty: _difficulty.label,
       durationSeconds: _t.round(),
@@ -366,7 +366,7 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sky Burger (Left/Right Catch)')),
+      appBar: AppBar(title: const Text('Sky Burger')),
       body: SafeArea(
         child: Focus(
           focusNode: _focusNode,
@@ -396,7 +396,7 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
       children: [
         const Icon(Icons.fastfood_rounded, size: 72, color: Colors.orangeAccent),
         const SizedBox(height: 8),
-        const Text('Sky Burger (Left/Right Catch)',
+        const Text('Sky Burger',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
