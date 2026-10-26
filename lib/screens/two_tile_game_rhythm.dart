@@ -13,7 +13,7 @@ class _RhythmNote {
   double start;
   final double duration;
   final String kind;
-  int state = 0; // pending, holding, completed, missed, released early
+  int state = 0;
   double pressedAt = 0;
   int timingPoints = 0;
   _RhythmNote(this.lane, this.start, this.duration, this.kind);
@@ -35,7 +35,7 @@ class TwoTileGameRhythmScreen extends StatefulWidget {
 
 class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
     with SingleTickerProviderStateMixin {
-  static const _cells = <int>[3, 5]; // G and J
+  static const _cells = <int>[3, 5];
   static const double _window = 0.45;
   final PushController input = PushController();
   final Random _random = Random();
@@ -104,7 +104,6 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
     double at = _lead + 1;
     int previous = _random.nextInt(2);
     for (final kind in _pattern) {
-      // Alternate lanes so neither side is repeatedly overloaded.
       final lane = previous;
       previous = 1 - previous;
       final duration = switch (kind) {
@@ -160,8 +159,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
           _bestCombo = max(_bestCombo, _combo);
           _longest = max(_longest, note.duration);
           final multiplier = 1 + min(_combo, 10) * 0.1;
-          _score += ((note.timingPoints + note.duration * 20) *
-                  multiplier).round();
+          _score += ((note.timingPoints + note.duration * 20) * multiplier).round();
           _flash('HOLD COMPLETE', Colors.greenAccent);
         }
       }
@@ -179,8 +177,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
     double distance = double.infinity;
     for (final note in _notes) {
       final delta = (_time - note.start).abs();
-      if (note.lane == lane && note.state == 0 &&
-          delta <= _window && delta < distance) {
+      if (note.lane == lane && note.state == 0 && delta <= _window && delta < distance) {
         best = note;
         distance = delta;
       }
@@ -298,12 +295,9 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
             spacing: 14,
             runSpacing: 8,
             children: [
-              _legend(_noteColors['half']!,
-                  'Half ${PushConfig.halfSec.toStringAsFixed(1)} s'),
-              _legend(_noteColors['full']!,
-                  'Full ${PushConfig.fullSec.toStringAsFixed(1)} s'),
-              _legend(_noteColors['endurance']!,
-                  'Endurance ${(_endurance * PushConfig.scale).toStringAsFixed(0)} s'),
+              _legend(_noteColors['half']!, 'Half ${PushConfig.halfSec.toStringAsFixed(1)} s'),
+              _legend(_noteColors['full']!, 'Full ${PushConfig.fullSec.toStringAsFixed(1)} s'),
+              _legend(_noteColors['endurance']!, 'Endurance ${(_endurance * PushConfig.scale).toStringAsFixed(0)} s'),
             ],
           ),
           const SizedBox(height: 16),
@@ -357,8 +351,8 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
 
   Widget _play() {
     final done = _notes.where((n) => n.state >= 2).length;
-    const white = TextStyle(
-        color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold);
+    const white = TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold);
+
     return Container(
       color: const Color(0xFF05051A),
       padding: const EdgeInsets.all(10),
@@ -370,8 +364,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
               Text('Score $_score', style: white),
               Text('Note ${min(done + 1, _notes.length)}/${_notes.length}',
                   style: white.copyWith(color: Colors.white70)),
-              Text('Combo x$_combo',
-                  style: white.copyWith(color: Colors.orangeAccent)),
+              Text('Combo x$_combo', style: white.copyWith(color: Colors.orangeAccent)),
             ],
           ),
           SizedBox(
@@ -390,7 +383,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
               borderRadius: BorderRadius.circular(12),
               child: AnimatedBuilder(
                 animation: input,
-                builder: (_, __) => CustomPaint(
+                builder: (context, _) => CustomPaint(
                   painter: _TwoLaneHighwayPainter(
                     _notes,
                     _time,
@@ -433,8 +426,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
           pressStatsBar(_stats, dark: true),
           TextButton(
             onPressed: () => setState(() => _finish(early: true)),
-            child: const Text('End session',
-                style: TextStyle(color: Colors.white70)),
+            child: const Text('End session', style: TextStyle(color: Colors.white70)),
           ),
         ],
       ),
@@ -442,8 +434,8 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
   }
 
   Widget _summary() {
-    final accuracy =
-        _notes.isEmpty ? 0.0 : _completed / _notes.length * 100;
+    final accuracy = _notes.isEmpty ? 0.0 : _completed / _notes.length * 100;
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -451,8 +443,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
         const SizedBox(height: 8),
         Text(_early ? 'Session stopped' : 'Performance Summary',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: 24, fontWeight: FontWeight.bold)),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         Card(
           color: Colors.white,
@@ -474,24 +465,21 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
                 const Divider(),
                 _row('Missed', '$_missed'),
                 const Divider(),
-                _row('Full / Half / No press',
-                    '${_stats.full} / ${_stats.half} / ${_stats.none}'),
+                _row('Full / Half / No press', '${_stats.full} / ${_stats.half} / ${_stats.none}'),
               ],
             ),
           ),
         ),
         const SizedBox(height: 8),
         const Text('Saved to My Progress',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black54)),
+            textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: () => setState(() => _phase = _Phase.setup),
           icon: const Icon(Icons.replay),
           label: const Text('Play Again'),
           style: FilledButton.styleFrom(
-              backgroundColor: kTeal,
-              padding: const EdgeInsets.symmetric(vertical: 14)),
+              backgroundColor: kTeal, padding: const EdgeInsets.symmetric(vertical: 14)),
         ),
         const SizedBox(height: 8),
         OutlinedButton(
@@ -507,9 +495,7 @@ class _TwoTileGameRhythmScreenState extends State<TwoTileGameRhythmScreen>
         children: [
           Flexible(child: Text(label)),
           const SizedBox(width: 12),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       );
 }
@@ -534,28 +520,27 @@ class _TwoLaneHighwayPainter extends CustomPainter {
           colors: [Color(0xFF05051A), Color(0xFF241046)],
         ).createShader(rect),
     );
+
     final hitY = size.height * 0.88;
     final horizon = size.height * 0.03;
     final span = hitY - horizon;
     final fullWidth = size.width * 0.96;
 
-    double yAt(double p) =>
-        horizon + span * pow(p, 1.6).toDouble();
+    double yAt(double p) => horizon + span * pow(p, 1.6).toDouble();
     double scale(double y) => 0.30 + 0.70 * ((y - horizon) / span);
-    double centerX(int lane, double y) =>
-        size.width / 2 + (lane - 0.5) * (fullWidth / 2) * scale(y);
+    double centerX(int lane, double y) => size.width / 2 + (lane - 0.5) * (fullWidth / 2) * scale(y);
     double halfWidth(double y) => (fullWidth / 2) * scale(y) / 2;
 
     const laneColors = [Color(0xFF00E5FF), Color(0xFFFF4081)];
+
     for (var lane = 0; lane < 2; lane++) {
       final path = Path()
         ..moveTo(centerX(lane, horizon) - halfWidth(horizon), horizon)
         ..lineTo(centerX(lane, horizon) + halfWidth(horizon), horizon)
-        ..lineTo(centerX(lane, size.height) + halfWidth(size.height),
-            size.height)
-        ..lineTo(centerX(lane, size.height) - halfWidth(size.height),
-            size.height)
+        ..lineTo(centerX(lane, size.height) + halfWidth(size.height), size.height)
+        ..lineTo(centerX(lane, size.height) - halfWidth(size.height), size.height)
         ..close();
+
       canvas.drawPath(
         path,
         Paint()
@@ -582,34 +567,28 @@ class _TwoLaneHighwayPainter extends CustomPainter {
 
     for (final note in notes) {
       if (note.state != 0 && note.state != 1) continue;
-      final head = note.state == 1
-          ? 1.0
-          : (time - (note.start - lead)) / lead;
+      final head = note.state == 1 ? 1.0 : (time - (note.start - lead)) / lead;
       if (head <= 0 || head > 1.25) continue;
-      var tail =
-          (time - (note.start + note.duration - lead)) / lead;
+      var tail = (time - (note.start + note.duration - lead)) / lead;
       if (tail < 0) tail = 0;
+
       final yHead = yAt(head);
       final yTail = yAt(tail);
       final color = _noteColors[note.kind]!;
       const bodyWidth = 0.55;
 
       final body = Path()
-        ..moveTo(centerX(note.lane, yTail) -
-            halfWidth(yTail) * bodyWidth, yTail)
-        ..lineTo(centerX(note.lane, yTail) +
-            halfWidth(yTail) * bodyWidth, yTail)
-        ..lineTo(centerX(note.lane, yHead) +
-            halfWidth(yHead) * bodyWidth, yHead)
-        ..lineTo(centerX(note.lane, yHead) -
-            halfWidth(yHead) * bodyWidth, yHead)
+        ..moveTo(centerX(note.lane, yTail) - halfWidth(yTail) * bodyWidth, yTail)
+        ..lineTo(centerX(note.lane, yTail) + halfWidth(yTail) * bodyWidth, yTail)
+        ..lineTo(centerX(note.lane, yHead) + halfWidth(yHead) * bodyWidth, yHead)
+        ..lineTo(centerX(note.lane, yHead) - halfWidth(yHead) * bodyWidth, yHead)
         ..close();
+
       canvas.drawPath(
         body,
-        Paint()
-          ..color =
-              color.withValues(alpha: note.state == 1 ? 0.75 : 0.45),
+        Paint()..color = color.withValues(alpha: note.state == 1 ? 0.75 : 0.45),
       );
+
       final cap = RRect.fromRectAndRadius(
         Rect.fromCenter(
           center: Offset(centerX(note.lane, yHead), yHead),
@@ -618,6 +597,7 @@ class _TwoLaneHighwayPainter extends CustomPainter {
         ),
         const Radius.circular(8),
       );
+
       canvas.drawRRect(
         cap,
         Paint()..color = color.withValues(alpha: head > 1 ? 0.4 : 1),
