@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:rehab_sudoku/screens/tetris.dart';
 import '../main.dart';
 import 'light_chase_screen.dart';
 import 'rhythm_screen.dart';
 import 'two_hand_play.dart';
 import 'progress_screen.dart';
-import 'burger_catch_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';
@@ -101,16 +99,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () => _go(const RhythmGameScreen()),
                 ),
 
-                  ActionCard(
-                  icon: Icons.grid_view_rounded,
-                  color: kTeal,
-                  title: 'Tetris Game',
-                  description:
-                      'Tetris game with a twist! Hold the tiles to rotate and place the falling blocks. Practice your hand coordination and timing.',
-                  buttonLabel: 'Play Tetris Game',
-                  onPressed: () => _go(const TetrisPlayScreen()),
-                ),
-
                 ActionCard(
                   icon: Icons.back_hand_rounded,
                   color: kBlue,
@@ -120,16 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   buttonLabel: 'Play Hold & Reach',
                   onPressed: () => _go(const TwoHandPlayScreen()),
                 ),
-                                ActionCard(
-                  icon: Icons.lunch_dining_rounded,
-                  color: kTeal,
-                  title: 'Burger Catch',
-                  description:
-                      'Catch the falling ingredients by pushing tiles on the board.',
-                  buttonLabel: 'Play Burger Catch',
-                  onPressed: () => _go(const BurgerCatchScreen()),
-                ),
-                                                ActionCard(
+
+                  ActionCard(
                   icon: Icons.lunch_dining_rounded,
                   color: kTeal,
                   title: 'Sky Burger',
