@@ -406,7 +406,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
 
     TrainingHistoryService.instance.addSession(TrainingSession(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
-      activity: 'Treasure Hunt 2.5D',
+      activity: 'Treasure Hunt',
       date: DateTime.now(),
       difficulty: _difficulty.label,
       durationSeconds: _t.round(),
