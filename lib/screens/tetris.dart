@@ -18,18 +18,16 @@ enum GameSpeed {
   const GameSpeed(this.label, this.duration);
 }
 
-/// 4-lane control colors matching D, F, J, K
 const List<Color> _controlColors = [
-  Color(0xFFF0788C), // D - Pink (Move Left / Hold to Rotate Left)
-  Color(0xFF7BD095), // F - Green (Move Right / Hold to Rotate Right)
+  Color(0xFFF0788C), // D - Pink (Move Left / Wrap)
+  Color(0xFF7BD095), // F - Green (Rotate Clockwise)
   Color(0xFFFFC95C), // J - Yellow (Save to Bank)
   Color(0xFF63A7EF), // K - Blue (Hard Drop)
 ];
 
 const List<String> _controlKeys = ['D', 'F', 'J', 'K'];
-const List<String> _controlActions = ['Move / Hold RotL', 'Move / Hold RotR', 'Save to Bank', 'Hard Drop'];
+const List<String> _controlActions = ['Move Left (Wrap)', 'Rotate CW', 'Save to Bank', 'Hard Drop'];
 
-// Tetris shapes and colors
 const int gridWidth = 10;
 const int gridHeight = 20;
 
@@ -96,12 +94,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
   final Stopwatch _total = Stopwatch();
   Timer? _ticker;
 
-  // Timers to handle hold-to-rotate functionality for D and F keys
-  Timer? _holdTimerD;
-  Timer? _holdTimerF;
-  bool _didRotateD = false;
-  bool _didRotateF = false;
-
   _Phase _phase = _Phase.setup;
   GameSpeed _speed = GameSpeed.easy;
 
@@ -117,7 +109,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
   int _score = 0;
   int _linesCleared = 0;
   bool _early = false;
-  String _message = 'Tap to Move, Hold to Rotate!';
 
   @override
   void initState() {
@@ -128,8 +119,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
-    _holdTimerD?.cancel();
-    _holdTimerF?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -177,7 +166,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
       _linesCleared = 0;
       _bankedPiece = null;
       _early = false;
-      _message = 'Game started! Tap D/F to Move, Hold to Rotate';
       _total
         ..reset()
         ..start();
@@ -239,34 +227,21 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
   void _moveLeft() {
     if (_phase != _Phase.playing) return;
     setState(() {
-      if (!_checkCollision(_currentX - 1, _currentY, _currentShape)) {
-        _currentX--;
+      int targetX = _currentX - 1;
+      if (!_checkCollision(targetX, _currentY, _currentShape)) {
+        _currentX = targetX;
+      } else {
+        for (int x = gridWidth - 1; x > _currentX; x--) {
+          if (!_checkCollision(x, _currentY, _currentShape)) {
+            _currentX = x;
+            break;
+          }
+        }
       }
     });
   }
 
-  void _moveRight() {
-    if (_phase != _Phase.playing) return;
-    setState(() {
-      if (!_checkCollision(_currentX + 1, _currentY, _currentShape)) {
-        _currentX++;
-      }
-    });
-  }
-
-  void _rotateLeft() {
-    if (_phase != _Phase.playing) return;
-    setState(() {
-      final rows = _currentShape.length;
-      final cols = _currentShape[0].length;
-      List<List<int>> rotated = List.generate(cols, (r) => List.generate(rows, (c) => _currentShape[c][rows - 1 - r]));
-      if (!_checkCollision(_currentX, _currentY, rotated)) {
-        _currentShape = rotated;
-      }
-    });
-  }
-
-  void _rotateRight() {
+  void _rotateClockwise() {
     if (_phase != _Phase.playing) return;
     setState(() {
       final rows = _currentShape.length;
@@ -306,34 +281,19 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
 
   void _onButtonDown(int index) {
     if (_phase != _Phase.playing) return;
-    if (index == 0) {
-      _moveLeft();
-      _didRotateD = false;
-      _holdTimerD?.cancel();
-      _holdTimerD = Timer(const Duration(milliseconds: 300), () {
-        _didRotateD = true;
-        _rotateLeft();
-      });
-    } else if (index == 1) {
-      _moveRight();
-      _didRotateF = false;
-      _holdTimerF?.cancel();
-      _holdTimerF = Timer(const Duration(milliseconds: 300), () {
-        _didRotateF = true;
-        _rotateRight();
-      });
-    } else if (index == 2) {
-      _saveToBank();
-    } else if (index == 3) {
-      _hardDrop();
-    }
-  }
-
-  void _onButtonUp(int index) {
-    if (index == 0) {
-      _holdTimerD?.cancel();
-    } else if (index == 1) {
-      _holdTimerF?.cancel();
+    switch (index) {
+      case 0:
+        _moveLeft();
+        break;
+      case 1:
+        _rotateClockwise();
+        break;
+      case 2:
+        _saveToBank();
+        break;
+      case 3:
+        _hardDrop();
+        break;
     }
   }
 
@@ -354,13 +314,10 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
 
     if (index == null) return KeyEventResult.ignored;
 
-    if (event is KeyDownEvent) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
       _onButtonDown(index);
       return KeyEventResult.handled;
-    } else if (event is KeyRepeatEvent) {
-      return KeyEventResult.handled;
     } else if (event is KeyUpEvent) {
-      _onButtonUp(index);
       return KeyEventResult.handled;
     }
 
@@ -370,8 +327,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
   void _finish({bool early = false}) {
     _total.stop();
     _ticker?.cancel();
-    _holdTimerD?.cancel();
-    _holdTimerF?.cancel();
     _early = early;
     _phase = _Phase.done;
 
@@ -424,8 +379,8 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
         const SizedBox(height: 10),
         const Text(
           'Control the falling block using 4 keys (D, F, J, K):\n\n'
-          '• D: Tap to Move Left (Hold to Rotate Left)\n'
-          '• F: Tap to Move Right (Hold to Rotate Right)\n'
+          '• D: Move Left (Wraps to the right boundary)\n'
+          '• F: Rotate Clockwise\n'
           '• J: Save block to Bank\n'
           '• K: Instant Drop',
           style: TextStyle(fontSize: 16),
@@ -533,8 +488,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 4.0),
                     child: GestureDetector(
                       onTapDown: (_) => _onButtonDown(index),
-                      onTapUp: (_) => _onButtonUp(index),
-                      onTapCancel: () => _onButtonUp(index),
                       child: Container(
                         decoration: BoxDecoration(
                           color: _controlColors[index].withValues(alpha: 0.25),

@@ -10,34 +10,27 @@ import 'training_history_service.dart';
 enum _Phase { setup, cutting, done }
 
 class _IngredientTask {
-  final int lane; // 0: Pink (D), 1: Green (F), 2: Yellow (J), 3: Blue (K)
-  final bool isHold; // true = Hold continuously, false = Press per cut
+  final int lane;
   final String name;
-  final int totalPieces; // Total pieces desired
-  final int slicesPerCut; // Hits or hold multiplier per cut line
+  final int totalPieces;
 
   int get totalCuts => max(1, totalPieces - 1);
-  int get totalHitsNeeded => totalCuts * slicesPerCut;
 
-  int completedHits = 0;
-  double holdProgress = 0.0;
+  double cutProgress = 0.0; // Cut progress in cut units (0.0 to totalCuts)
   int state = 0; // 0: pending, 1: active, 2: completed
 
   _IngredientTask(
     this.lane,
     this.name,
-    this.totalPieces, {
-    required this.isHold,
-    this.slicesPerCut = 1,
-  });
+    this.totalPieces,
+  );
 
-  double get progress => isHold
-      ? holdProgress
-      : (completedHits / totalHitsNeeded).clamp(0.0, 1.0);
+  double get progress => (cutProgress / totalCuts).clamp(0.0, 1.0);
 
-  int get completedCuts => isHold
-      ? (holdProgress * totalCuts).floor().clamp(0, totalCuts)
-      : (completedHits / slicesPerCut).floor().clamp(0, totalCuts);
+  int get completedCuts => cutProgress.floor().clamp(0, totalCuts);
+
+  bool get hasHalfCut =>
+      (cutProgress - completedCuts) >= 0.499 && completedCuts < totalCuts;
 }
 
 const _ingredientColors = <String, Color>{
@@ -52,25 +45,18 @@ const _ingredientColors = <String, Color>{
 };
 
 const List<Color> _laneColors = [
-  Color(0xFFF0788C), // Pink (D)
-  Color(0xFF7BD095), // Green (F)
-  Color(0xFFFFC95C), // Yellow (J)
-  Color(0xFF63A7EF), // Blue (K)
+  Color(0xFFF0788C), // Lane 0 - Pink (D)
+  Color(0xFF7BD095), // Lane 1 - Green (F)
+  Color(0xFFFFC95C), // Lane 2 - Yellow (J)
+  Color(0xFF63A7EF), // Lane 3 - Blue (K)
 ];
 
 const List<String> _laneKeyLabels = ['D', 'F', 'J', 'K'];
 const List<String> _laneNames = ['Pink (D)', 'Green (F)', 'Yellow (J)', 'Blue (K)'];
 
-// Ingredient pools by difficulty
 const _easyPool = ['Carrot', 'Cucumber', 'Cheese', 'Pumpkin'];
 const _mediumPool = ['Carrot', 'Cucumber', 'Steak', 'Cheese', 'Pumpkin', 'Pineapple', 'Frozen Meat'];
 const _hardPool = ['Carrot', 'Steak', 'Pumpkin', 'Pineapple', 'Frozen Meat', 'Coconut'];
-
-int _getSlicesPerCut(String name) => switch (name) {
-      'Pumpkin' || 'Pineapple' || 'Frozen Meat' => 2,
-      'Coconut' => 3,
-      _ => 1,
-    };
 
 class FourTileKitchenCutterScreen extends StatefulWidget {
   const FourTileKitchenCutterScreen({super.key});
@@ -88,7 +74,10 @@ class _FourTileKitchenCutterScreenState
   final FocusNode _focusNode = FocusNode();
   final Random _random = Random();
   final PressStats _stats = PressStats();
-  final Set<int> _touchDownLanes = {}; // Tracks active touch, mouse, and keyboard button presses
+  final Set<int> _touchDownLanes = {};
+
+  final Map<int, DateTime> _lanePressStart = {};
+  final Set<int> _autoTriggeredLanes = {};
 
   final List<_IngredientTask> _tasks = [];
   late final Ticker _ticker;
@@ -124,7 +113,7 @@ class _FourTileKitchenCutterScreenState
     super.initState();
     input.allowed = _cells;
     input.onDown = _onDown;
-    input.onUp = _onUp;
+    input.onUp = (cell, _) => _onUp(cell);
     _ticker = createTicker(_tick);
   }
 
@@ -141,15 +130,13 @@ class _FourTileKitchenCutterScreenState
     final ingredients = _generateRandomTaskPool();
 
     for (final name in ingredients) {
-      final lane = _random.nextInt(4); // 4 Lanes
-      final isHold = _random.nextBool(); // Alternate hold vs tap per cut
+      final lane = _random.nextInt(4);
       final pieces = switch (_difficulty) {
         Difficulty.easy => 4,
         Difficulty.medium => 5,
         Difficulty.hard => 6,
       };
-      final slices = _getSlicesPerCut(name);
-      _tasks.add(_IngredientTask(lane, name, pieces, isHold: isHold, slicesPerCut: slices));
+      _tasks.add(_IngredientTask(lane, name, pieces));
     }
     _currentTaskIndex = 0;
   }
@@ -159,6 +146,9 @@ class _FourTileKitchenCutterScreenState
     input.allowed = _cells;
     input.clear();
     _touchDownLanes.clear();
+    _lanePressStart.clear();
+    _autoTriggeredLanes.clear();
+
     if (_ticker.isActive) _ticker.stop();
     setState(() {
       _makeTasks();
@@ -166,12 +156,11 @@ class _FourTileKitchenCutterScreenState
       _score = _combo = _bestCombo = 0;
       _completed = 0;
       _time = 0;
-      _feedback = 'Start Cutting!';
+      _feedback = 'Hold keys to cut!';
       _feedbackColor = Colors.greenAccent;
       _phase = _Phase.cutting;
     });
 
-    // Request focus for keyboard input when game starts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_focusNode);
     });
@@ -184,9 +173,6 @@ class _FourTileKitchenCutterScreenState
     _feedbackColor = color;
   }
 
-  // ---------------------------------------------------------------------
-  // Keyboard Event Handler (D, F, J, K)
-  // ---------------------------------------------------------------------
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (_phase != _Phase.cutting) return KeyEventResult.ignored;
 
@@ -218,7 +204,7 @@ class _FourTileKitchenCutterScreenState
         setState(() {
           _touchDownLanes.remove(laneIndex!);
         });
-        _onUp(cell, 0);
+        _onUp(cell);
       }
       return KeyEventResult.handled;
     }
@@ -237,19 +223,14 @@ class _FourTileKitchenCutterScreenState
       }
 
       final current = _tasks[_currentTaskIndex];
-
-      // Continuous hold mechanism for hold tasks
-      if (current.isHold && current.state == 1) {
-        final cell = _cells[current.lane];
-        final isInputActive = input.isDown(cell) || _touchDownLanes.contains(current.lane);
-
-        if (isInputActive) {
-          current.holdProgress += 0.012 / current.slicesPerCut;
-          if (current.holdProgress >= 1.0) {
-            current.holdProgress = 1.0;
-            current.state = 2;
-            _completeTask(current);
-          }
+      
+      // Auto-trigger full press when held for 2.0 seconds (100%)
+      final startTime = _lanePressStart[current.lane];
+      if (startTime != null && !_autoTriggeredLanes.contains(current.lane)) {
+        final heldSeconds = DateTime.now().difference(startTime).inMilliseconds / 1000.0;
+        if (heldSeconds >= 2.0) {
+          _autoTriggeredLanes.add(current.lane);
+          _applyCutByDuration(current, heldSeconds);
         }
       }
     });
@@ -260,7 +241,6 @@ class _FourTileKitchenCutterScreenState
     _combo++;
     _bestCombo = max(_bestCombo, _combo);
     _score += (150 * (1 + _combo * 0.1)).round();
-    _stats.add(PressResult.full);
     _flash('SLICE COMPLETE!', Colors.amberAccent);
     _currentTaskIndex++;
   }
@@ -276,41 +256,60 @@ class _FourTileKitchenCutterScreenState
       return;
     }
 
+    _lanePressStart[lane] = DateTime.now();
+    _autoTriggeredLanes.remove(lane);
+
     setState(() {
       if (current.state == 0) {
         current.state = 1;
       }
-
-      // Tap per chop impact
-      if (!current.isHold) {
-        current.completedHits++;
-        
-        final hitInCurrentCut = ((current.completedHits - 1) % current.slicesPerCut) + 1;
-        if (current.slicesPerCut > 1 && hitInCurrentCut < current.slicesPerCut) {
-          _flash('HACK! ($hitInCurrentCut/${current.slicesPerCut})', Colors.orangeAccent);
-        } else {
-          _flash('CHOP!', Colors.cyanAccent);
-        }
-
-        if (current.completedHits >= current.totalHitsNeeded) {
-          current.state = 2;
-          _completeTask(current);
-        }
-      }
     });
   }
 
-  void _onUp(int cell, double seconds) {
+  void _onUp(int cell) {
     if (_phase != _Phase.cutting) return;
     final lane = _cells.indexOf(cell);
     if (lane < 0 || _currentTaskIndex >= _tasks.length) return;
 
     final current = _tasks[_currentTaskIndex];
-    if (current.isHold && current.lane == lane && current.state == 1 && current.holdProgress < 1.0) {
-      setState(() {
-        _flash('RELEASED EARLY!', Colors.orangeAccent);
-      });
+    if (current.lane != lane) return;
+
+    if (_autoTriggeredLanes.contains(lane)) {
+      _autoTriggeredLanes.remove(lane);
+      _lanePressStart.remove(lane);
+      return;
     }
+
+    final startTime = _lanePressStart.remove(lane);
+    if (startTime == null) return;
+
+    final heldSeconds = DateTime.now().difference(startTime).inMilliseconds / 1000.0;
+    _applyCutByDuration(current, heldSeconds);
+  }
+
+  void _applyCutByDuration(_IngredientTask current, double heldSeconds) {
+    setState(() {
+      final percent = ((heldSeconds / 2.0) * 100).clamp(0.0, 100.0).round();
+
+      if (heldSeconds < 1.0) {
+        _stats.add(PressResult.none);
+        _flash('NO PRESS ($percent%)', Colors.redAccent);
+      } else if (heldSeconds < 2.0) {
+        _stats.add(PressResult.half);
+        current.cutProgress += 0.5;
+        _flash('HALF PRESS ($percent%)', Colors.orangeAccent);
+      } else {
+        _stats.add(PressResult.full);
+        current.cutProgress += 1.0;
+        _flash('FULL PRESS (100%)', Colors.cyanAccent);
+      }
+
+      if (current.cutProgress >= current.totalCuts) {
+        current.cutProgress = current.totalCuts.toDouble();
+        current.state = 2;
+        _completeTask(current);
+      }
+    });
   }
 
   void _finish({bool early = false}) {
@@ -318,6 +317,8 @@ class _FourTileKitchenCutterScreenState
     _ticker.stop();
     input.clear();
     _touchDownLanes.clear();
+    _lanePressStart.clear();
+    _autoTriggeredLanes.clear();
     _phase = _Phase.done;
 
     TrainingHistoryService.instance.addSession(TrainingSession(
@@ -371,12 +372,12 @@ class _FourTileKitchenCutterScreenState
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           const Text(
-            'Cut ingredients into equal parts using 4 colored tiles!\n\n'
+            'Cut ingredients using key-hold timing!\n\n'
             '• Pink (D) • Green (F) • Yellow (J) • Blue (K)\n\n'
-            '• HOLD tasks: Press and hold the target colored tile continuously.\n'
-            '• CHOP tasks: Tap the target tile rhythmic times per cut.\n'
-            '• Tough items require multiple chops/holds per cut seam!\n'
-            '• Controls: Use on-screen pads or keyboard keys D  F  J  K.',
+            '• < 50% (< 1.0s): No Press (Cut failed / Too short)\n'
+            '• 50% – 99% (1.0s – 1.9s): Half Press (Cuts 50% of a seam)\n'
+            '• 100% (≥ 2.0s): Full Press (Cuts 100% of a seam)\n\n'
+            '• Controls: Tap & hold on-screen pads or keyboard keys D F J K.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15),
           ),
@@ -407,7 +408,7 @@ class _FourTileKitchenCutterScreenState
 
   Widget _play() {
     final currentTask = _currentTaskIndex < _tasks.length ? _tasks[_currentTaskIndex] : null;
-    final isDown = currentTask != null &&
+    final isPressed = currentTask != null &&
         (input.isDown(_cells[currentTask.lane]) || _touchDownLanes.contains(currentTask.lane));
 
     return Container(
@@ -436,10 +437,10 @@ class _FourTileKitchenCutterScreenState
               borderRadius: BorderRadius.circular(16),
               child: AnimatedBuilder(
                 animation: input,
-                builder: (_, __) => CustomPaint(
+                builder: (context, _) => CustomPaint(
                   painter: _KitchenCuttingPainter(
                     currentTask: currentTask,
-                    isHolding: isDown,
+                    isPressed: isPressed,
                     animationTime: _time,
                   ),
                   child: const SizedBox.expand(),
@@ -450,12 +451,10 @@ class _FourTileKitchenCutterScreenState
           const SizedBox(height: 8),
           if (currentTask != null) ...[
             Text(
-              currentTask.isHold
-                  ? 'Target: Hold ${_laneNames[currentTask.lane]} Continuously ${currentTask.slicesPerCut > 1 ? "(${currentTask.slicesPerCut}x Toughness)" : ""}'
-                  : 'Target: Tap ${_laneNames[currentTask.lane]} (${currentTask.slicesPerCut}x per cut) [${currentTask.completedHits}/${currentTask.totalHitsNeeded}]',
+              'Target: ${_laneNames[currentTask.lane]} | Cut ${currentTask.completedCuts}/${currentTask.totalCuts} ${currentTask.hasHalfCut ? "(Half Cut)" : ""}',
               style: TextStyle(
                 color: _laneColors[currentTask.lane],
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -469,7 +468,6 @@ class _FourTileKitchenCutterScreenState
             ),
           ],
           const SizedBox(height: 12),
-          // Interactive 4-Button Input Row
           _buildFourButtonRow(),
           const SizedBox(height: 8),
           TextButton(
@@ -481,7 +479,7 @@ class _FourTileKitchenCutterScreenState
     );
   }
 
-  /// Builds 4 interactive lane buttons matching Pink, Green, Yellow, and Blue color scheme
+  /// Interactive 4-Button Row matching Rhythm Game button styling & transitions
   Widget _buildFourButtonRow() {
     return AnimatedBuilder(
       animation: input,
@@ -499,15 +497,24 @@ class _FourTileKitchenCutterScreenState
             String labelText = _laneKeyLabels[index];
             Color labelColor = Colors.white;
             Color borderColor = color;
-            double borderWidth = isTargetLane ? 5.0 : 3.0;
+            double borderWidth = isTargetLane ? 4.0 : 3.0;
+            Color fillColor = color.withValues(alpha: 0.45);
 
-            if (isTargetLane && currentTask.isHold && currentTask.state == 1) {
-              fillRatio = currentTask.holdProgress;
+            double heldSeconds = 0.0;
+            final startTime = _lanePressStart[index];
+            if (isPressed && startTime != null) {
+              heldSeconds = DateTime.now().difference(startTime).inMilliseconds / 1000.0;
+              fillRatio = (heldSeconds / 2.0).clamp(0.0, 1.0);
               final pct = (fillRatio * 100).round();
+              final reachedMid = heldSeconds >= 1.0;
+
               labelText = '$pct%';
-              labelColor = Colors.amberAccent;
-            } else if (isPressed) {
-              fillRatio = 1.0;
+              labelColor = reachedMid ? Colors.greenAccent : Colors.amberAccent;
+              borderColor = reachedMid ? kFullColor : kHalfColor;
+              borderWidth = reachedMid ? 5.0 : 3.0;
+              fillColor = reachedMid
+                  ? Colors.greenAccent.withValues(alpha: 0.4)
+                  : Colors.amberAccent.withValues(alpha: 0.4);
             }
 
             return Expanded(
@@ -515,22 +522,16 @@ class _FourTileKitchenCutterScreenState
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
                 child: Listener(
                   onPointerDown: (_) {
-                    setState(() {
-                      _touchDownLanes.add(index);
-                    });
+                    setState(() => _touchDownLanes.add(index));
                     _onDown(cell);
                   },
                   onPointerUp: (_) {
-                    setState(() {
-                      _touchDownLanes.remove(index);
-                    });
-                    _onUp(cell, 0);
+                    setState(() => _touchDownLanes.remove(index));
+                    _onUp(cell);
                   },
                   onPointerCancel: (_) {
-                    setState(() {
-                      _touchDownLanes.remove(index);
-                    });
-                    _onUp(cell, 0);
+                    setState(() => _touchDownLanes.remove(index));
+                    _onUp(cell);
                   },
                   child: Container(
                     height: 80,
@@ -544,7 +545,7 @@ class _FourTileKitchenCutterScreenState
                       boxShadow: isPressed || isTargetLane
                           ? [
                               BoxShadow(
-                                color: color.withValues(alpha: 0.65),
+                                color: borderColor.withValues(alpha: 0.65),
                                 blurRadius: 14,
                                 spreadRadius: 2,
                               )
@@ -561,7 +562,7 @@ class _FourTileKitchenCutterScreenState
                               child: FractionallySizedBox(
                                 heightFactor: fillRatio,
                                 widthFactor: 1.0,
-                                child: Container(color: color.withValues(alpha: 0.45)),
+                                child: Container(color: fillColor),
                               ),
                             ),
                           Center(
@@ -607,6 +608,12 @@ class _FourTileKitchenCutterScreenState
                 const Divider(),
                 _row('Items Cut', '$_completed / ${_tasks.length}'),
                 const Divider(),
+                _row('Full Presses (100% / ≥2.0s)', '${_stats.full}'),
+                const Divider(),
+                _row('Half Presses (50-99% / 1.0-1.9s)', '${_stats.half}'),
+                const Divider(),
+                _row('No Presses (<50% / <1.0s)', '${_stats.none}'),
+                const Divider(),
                 _row('Best Combo', '$_bestCombo'),
               ],
             ),
@@ -641,18 +648,17 @@ class _FourTileKitchenCutterScreenState
 
 class _KitchenCuttingPainter extends CustomPainter {
   final _IngredientTask? currentTask;
-  final bool isHolding;
+  final bool isPressed;
   final double animationTime;
 
   _KitchenCuttingPainter({
     required this.currentTask,
-    required this.isHolding,
+    required this.isPressed,
     required this.animationTime,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Wood Cutting Board Background
     final rect = Offset.zero & size;
     canvas.drawRect(
       rect,
@@ -670,7 +676,6 @@ class _KitchenCuttingPainter extends CustomPainter {
     );
     canvas.drawRRect(boardRect, Paint()..color = const Color(0xFF8D6E63));
 
-    // Wood Grain Lines
     final grainPaint = Paint()
       ..color = const Color(0xFF795548).withValues(alpha: 0.4)
       ..strokeWidth = 2
@@ -685,12 +690,10 @@ class _KitchenCuttingPainter extends CustomPainter {
     final ingColor = _ingredientColors[currentTask!.name] ?? Colors.orange;
     final progress = currentTask!.progress.clamp(0.0, 1.0);
 
-    // 2. Ingredient Name & Percentage Display
-    final toughnessBadge = currentTask!.slicesPerCut > 1 ? ' [${currentTask!.slicesPerCut}x Tough]' : '';
     final percentText = '${(progress * 100).toStringAsFixed(0)}%';
     final textPainter = TextPainter(
       text: TextSpan(
-        text: '${currentTask!.name}$toughnessBadge\n$percentText',
+        text: '${currentTask!.name}\n$percentText',
         style: const TextStyle(
           color: Colors.white,
           fontSize: 16,
@@ -715,7 +718,7 @@ class _KitchenCuttingPainter extends CustomPainter {
 
     final numSeparatedSlices = isFullyDone ? totalPieces : completedCutsCount;
 
-    // 3. Render Cut Slices (Sliding cleanly leftwards away from remaining block)
+    // Draw fully separated slices
     for (int i = 0; i < numSeparatedSlices; i++) {
       final origX = leftX + (i + 0.5) * pieceWidth;
       final shiftLeft = 12.0 + (numSeparatedSlices - 1 - i) * 3.0;
@@ -732,7 +735,6 @@ class _KitchenCuttingPainter extends CustomPainter {
         Paint()..color = ingColor,
       );
 
-      // Top specular highlight
       if (pieceWidth > 10) {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
@@ -747,7 +749,6 @@ class _KitchenCuttingPainter extends CustomPainter {
         );
       }
 
-      // Seam line on right edge of slice
       final edgeX = pieceRect.right - 1;
       canvas.drawLine(
         Offset(edgeX, center.dy - 28),
@@ -758,7 +759,7 @@ class _KitchenCuttingPainter extends CustomPainter {
       );
     }
 
-    // 4. Render Remaining Uncut Block
+    // Draw remaining uncut portion
     if (!isFullyDone && numSeparatedSlices < totalPieces) {
       final uncutLeftX = leftX + (numSeparatedSlices * pieceWidth);
       final uncutWidth = totalWidth - (numSeparatedSlices * pieceWidth);
@@ -789,35 +790,35 @@ class _KitchenCuttingPainter extends CustomPainter {
           Paint()..color = Colors.white.withValues(alpha: 0.3),
         );
       }
-    }
 
-    // 5. Knife Target Position (Positioned strictly along cut lines 1 through totalCuts)
-    final double knifeTargetX;
-    if (currentTask!.isHold) {
-      final startCutX = leftX + pieceWidth;
-      final endCutX = leftX + totalCuts * pieceWidth;
-      knifeTargetX = startCutX + progress * (endCutX - startCutX);
-    } else {
-      final currentCutMark = min(completedCutsCount + 1, totalCuts);
-      knifeTargetX = leftX + currentCutMark * pieceWidth;
-    }
-
-    double knifeYOffset = -45.0;
-    if (currentTask!.isHold) {
-      knifeYOffset = isHolding
-          ? 5.0 + (sin(animationTime * 30) * 4.0)
-          : -45.0;
-    } else {
-      if (isHolding) {
-        knifeYOffset = 12.0;
-      } else {
-        knifeYOffset = -35.0 + (sin(animationTime * 12) * 4.0);
+      // Draw notch if current cut seam is cut halfway
+      if (currentTask!.hasHalfCut) {
+        final halfCutX = uncutLeftX + pieceWidth;
+        canvas.drawLine(
+          Offset(halfCutX, center.dy - 30),
+          Offset(halfCutX, center.dy),
+          Paint()
+            ..color = Colors.black.withValues(alpha: 0.7)
+            ..strokeWidth = 3.0,
+        );
       }
+    }
+
+    // Knife positioning
+    final currentCutMark = min(completedCutsCount + 1, totalCuts);
+    final knifeTargetX = leftX + currentCutMark * pieceWidth;
+
+    double knifeYOffset;
+    if (currentTask!.hasHalfCut) {
+      knifeYOffset = isPressed ? 15.0 : -10.0;
+    } else {
+      knifeYOffset = isPressed
+          ? 15.0
+          : -35.0 + (sin(animationTime * 12) * 4.0);
     }
 
     final knifeCenter = Offset(knifeTargetX, center.dy - 65 + knifeYOffset);
 
-    // Blade Path
     final bladePath = Path()
       ..moveTo(knifeCenter.dx - 6, knifeCenter.dy)
       ..lineTo(knifeCenter.dx + 6, knifeCenter.dy)
@@ -827,7 +828,6 @@ class _KitchenCuttingPainter extends CustomPainter {
 
     canvas.drawPath(bladePath, Paint()..color = Colors.blueGrey.shade100);
 
-    // Blade Edge Highlight
     canvas.drawLine(
       Offset(knifeCenter.dx - 6, knifeCenter.dy),
       Offset(knifeCenter.dx - 6, knifeCenter.dy + 85),
@@ -836,7 +836,6 @@ class _KitchenCuttingPainter extends CustomPainter {
         ..strokeWidth = 2,
     );
 
-    // Knife Handle
     final handleRect = Rect.fromCenter(
       center: knifeCenter.translate(0, -32),
       width: 14,

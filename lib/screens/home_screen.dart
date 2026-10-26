@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:rehab_sudoku/screens/tetris.dart';
 import '../main.dart';
 import 'light_chase_screen.dart';
-import 'interim_demo_screen.dart';
 import 'rhythm_screen.dart';
-import 'tictactoe_screen.dart';
 import 'two_hand_play.dart';
 import 'progress_screen.dart';
-import 'burger_catch_screen.dart';
-import 'two_tile_game_rhythm.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
-import 'sky_burger.dart';
+import 'sky_burger_real.dart';
+import 'treasure_hunt.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -104,14 +100,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () => _go(const RhythmGameScreen()),
                 ),
 
-                  ActionCard(
-                  icon: Icons.grid_view_rounded,
-                  color: kTeal,
-                  title: 'Tetris Game',
+                ActionCard(
+                  icon: Icons.diamond_rounded,
+                  color: kGreen,
+                  title: 'Treasure Hunt',
                   description:
-                      'Tetris game with a twist! Hold the tiles to rotate and place the falling blocks. Practice your hand coordination and timing.',
-                  buttonLabel: 'Play Tetris Game',
-                  onPressed: () => _go(const TetrisPlayScreen()),
+                      'Observe the minimap clues to find the treasure in the shortest time possible.',
+                  buttonLabel: 'Play Treasure Hunt',
+                  onPressed: () => _go(const TreasureHunt2D5Screen()),
                 ),
 
                 ActionCard(
@@ -123,16 +119,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   buttonLabel: 'Play Hold & Reach',
                   onPressed: () => _go(const TwoHandPlayScreen()),
                 ),
-                                ActionCard(
-                  icon: Icons.lunch_dining_rounded,
-                  color: kTeal,
-                  title: 'Burger Catch',
-                  description:
-                      'Catch the falling ingredients by pushing tiles on the board.',
-                  buttonLabel: 'Play Burger Catch',
-                  onPressed: () => _go(const BurgerCatchScreen()),
-                ),
-                                                ActionCard(
+
+                  ActionCard(
                   icon: Icons.lunch_dining_rounded,
                   color: kTeal,
                   title: 'Sky Burger',

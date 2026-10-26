@@ -25,6 +25,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
     'Rhythm Game',
     'Tic-Tac-Toe',
     'Hold & Reach',
+    'Sky Burger',
+    'Kitchen Cutter',
+    'Treasure Hunt',
     'Cool-Down',
   ];
 
@@ -128,7 +131,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
       appBar: AppBar(
         title: const Text('My Progress'),
         actions: [
-          // Only therapists see this menu, so patients cannot wipe data.
           if (therapistView)
             PopupMenuButton<String>(
               tooltip: 'More',
@@ -160,7 +162,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
               .where((s) => !_dayOf(s.date).isBefore(rangeStart))
               .toList();
 
-          // "This week" = last 7 days, "last week" = the 7 days before that.
           final weekStart = _addDays(today, -6);
           final prevStart = _addDays(today, -13);
           final thisWeek = byActivity
@@ -272,7 +273,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
                   : 'No sessions for this activity yet.',
               textAlign: TextAlign.center,
             ),
-            // TESTING ONLY: remove this button before real patients use the app.
             if (noDataAtAll) ...[
               const SizedBox(height: 12),
               TextButton(
@@ -344,7 +344,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
         icon = Icons.trending_up;
         color = kGreen;
       } else if (diff <= -2) {
-        // Gentle wording on purpose: no red, no negative language.
         headline = 'A tougher week, but every session counts. Keep going!';
         icon = Icons.favorite_outline;
         color = kBlue;
@@ -510,8 +509,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
     );
   }
 
-  /// Small arrow + number comparing "now" with "before".
-  /// Green up = better, blue down = lower (never red), dash = about the same.
   Widget _delta(double? now, double? before, String suffix) {
     if (now == null || before == null) return const SizedBox(height: 18);
     final diff = now - before;
@@ -617,7 +614,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
     );
   }
 
-  /// Sessions grouped under "Today", "Yesterday", then dates.
   List<Widget> _groupedHistory(List<TrainingSession> list) {
     final widgets = <Widget>[];
     DateTime? lastDay;
@@ -675,6 +671,12 @@ class _ProgressScreenState extends State<ProgressScreen> {
         return Icons.tag_rounded;
       case 'Hold & Reach':
         return Icons.back_hand_rounded;
+      case 'Sky Burger':
+        return Icons.fastfood_rounded;
+      case 'Kitchen Cutter':
+        return Icons.kitchen_rounded;
+      case 'Treasure Hunt':
+        return Icons.castle_rounded;
       default:
         return Icons.flash_on_rounded;
     }
@@ -690,6 +692,12 @@ class _ProgressScreenState extends State<ProgressScreen> {
         return Colors.orange;
       case 'Tic-Tac-Toe':
         return kTeal;
+      case 'Sky Burger':
+        return Colors.orangeAccent;
+      case 'Kitchen Cutter':
+        return Colors.deepOrange;
+      case 'Treasure Hunt':
+        return Colors.amber;
       default:
         return kBlue;
     }
@@ -856,7 +864,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
 }
 
 // =============================================================================
-// TREND CHART (drawn by hand, so no extra package is needed)
+// TREND CHART
 // =============================================================================
 class _TrendPoint {
   final DateTime day;
@@ -877,7 +885,6 @@ class _TrendPainter extends CustomPainter {
     required this.color,
   });
 
-  /// Draws text. anchorX: 0 = text starts at x, 0.5 = centred, 1 = ends at x.
   void _label(Canvas canvas, String text, double x, double y, double anchorX) {
     final tp = TextPainter(
       text: TextSpan(
@@ -900,7 +907,6 @@ class _TrendPainter extends CustomPainter {
         ? left + w / 2
         : left + w * (d.difference(start).inDays / span);
 
-    // Grid lines at 0%, 50%, 100%
     final grid = Paint()
       ..color = Colors.black12
       ..strokeWidth = 1;
@@ -910,7 +916,6 @@ class _TrendPainter extends CustomPainter {
       _label(canvas, '$v%', left - 6, y, 1);
     }
 
-    // Line joining the dots
     if (points.length > 1) {
       final line = Paint()
         ..color = color
@@ -926,7 +931,6 @@ class _TrendPainter extends CustomPainter {
       canvas.drawPath(path, line);
     }
 
-    // Dots
     final dot = Paint()..color = color;
     final ring = Paint()..color = Colors.white;
     for (final p in points) {
@@ -935,7 +939,6 @@ class _TrendPainter extends CustomPainter {
       canvas.drawCircle(o, 4, dot);
     }
 
-    // Date labels under the chart
     final labelY = size.height - bottom / 2 + 4;
     _label(canvas, '${start.day}/${start.month}', left, labelY, 0);
     if (span > 0) {
