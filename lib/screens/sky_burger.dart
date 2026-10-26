@@ -13,8 +13,8 @@ enum _DropStep { selectX, selectY, dropping }
 class _BurgerLayer {
   final String name;
   final Color color;
-  final double x; // Width offset (-1.0 to 1.0)
-  final double y; // Depth/Length offset (-1.0 to 1.0)
+  final double x;
+  final double y;
   final double sizeScale;
   _BurgerLayer(this.name, this.color, this.x, this.y, {this.sizeScale = 1.0});
 }
@@ -33,7 +33,6 @@ const List<String> _ingredientPool = [
   'Patty', 'Cheese', 'Tomato', 'Lettuce', 'Pickle'
 ];
 
-/// Exact custom lane colors from the rhythm game code
 const List<Color> _laneColors = [
   Color(0xFFF0788C), // Lane 0 - Pink (D)
   Color(0xFF7BD095), // Lane 1 - Green (F)
@@ -43,7 +42,6 @@ const List<Color> _laneColors = [
 
 const List<String> _laneKeyLabels = ['D', 'F', 'J', 'K'];
 
-/// Classifies hold ratio into Full, Half, or None (No press)
 PressResult classifyBurgerHold(double ratio) {
   if (ratio >= 0.90) return PressResult.full;
   if (ratio >= 0.45) return PressResult.half;
@@ -74,10 +72,9 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   double _currentOscillationSpeed = 1.5;
   double _currentSizeScale = 1.0;
 
-  // 2x2 grid cell indices [0, 1, 2, 3]
   final List<int> _cells = const [0, 1, 2, 3];
   int _targetDropButton = 0;
-  double _holdProgress = 0.0; // 0.0 to 1.0 hold charge meter
+  double _holdProgress = 0.0;
 
   int _score = 0;
   int _combo = 1;
@@ -88,7 +85,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   Color _messageColor = Colors.white;
   double _lastAlignmentAccuracy = 100.0;
 
-  // Current falling ingredient state in 2.5D space
   String _currentIngredient = 'Bottom Bun';
   _DropStep _dropStep = _DropStep.selectX;
   double _currentX = 0.0;
@@ -103,8 +99,8 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   void initState() {
     super.initState();
     input.allowed = _cells;
-    input.onDown = _onDown;
-    input.onUp = _onUp;
+    input.onDown = _handleCellDown;
+    input.onUp = (cell, _) => _handleCellUp(cell);
     _ticker = createTicker(_onTick);
   }
 
@@ -165,11 +161,7 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
       _currentOscillationSpeed = 2.4 + _random.nextDouble() * 2.2;
     }
 
-    if (_difficulty == Difficulty.hard) {
-      _currentSizeScale = 0.7 + _random.nextDouble() * 0.6;
-    } else {
-      _currentSizeScale = 1.0;
-    }
+    _currentSizeScale = _difficulty == Difficulty.hard ? (0.7 + _random.nextDouble() * 0.6) : 1.0;
 
     _message = 'Step 1: Hold [${_laneKeyLabels[_targetDropButton]}] to 100% to lock X-Axis';
     _messageColor = _laneColors[_targetDropButton];
@@ -239,18 +231,10 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
               ? 'Half Press! Full hold (90%+) required to lock/drop.'
               : 'Released too early! Full hold required to lock/drop.';
           _messageColor = Colors.orangeAccent;
-          _holdProgress = 0.0; // Reset hold, action rejected
+          _holdProgress = 0.0;
         }
       });
     }
-  }
-
-  void _onDown(int cell) {
-    _handleCellDown(cell);
-  }
-
-  void _onUp(int cell, double sec) {
-    _handleCellUp(cell);
   }
 
   bool _isTargetHeld() {
@@ -265,7 +249,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     if (_phase == _Phase.playing) {
       final bool isHoldingTarget = _dropStep != _DropStep.dropping && _isTargetHeld();
 
-      // If holding target, charge progress and PAUSE oscillation time (_stepT)
       if (isHoldingTarget) {
         _holdProgress = (_holdProgress + dt / 0.6).clamp(0.0, 1.0);
         if (_holdProgress >= 1.0) {
@@ -273,7 +256,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
           _completeHoldAction();
         }
       } else {
-        // Only advance oscillation time when NOT holding the target button
         _stepT += dt;
       }
 
@@ -341,18 +323,18 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     int pointsEarned = 0;
     if (distanceToPrev < 0.25) {
       pointsEarned = 350 + (_combo * 60);
-      _message = 'PERFECT ALIGNMENT! (+${pointsEarned} pts)';
+      _message = 'PERFECT ALIGNMENT! (+$pointsEarned pts)';
       _messageColor = Colors.greenAccent;
       _combo++;
     } else if (distanceToPrev < 0.6) {
       pointsEarned = 180 + (_combo * 25);
-      _message = 'GOOD STACK! (+${pointsEarned} pts)';
+      _message = 'GOOD STACK! (+$pointsEarned pts)';
       _messageColor = Colors.lightBlueAccent;
       _combo++;
     } else {
       _combo = 1;
       pointsEarned = 60;
-      _message = 'UNSTABLE STACK! (+${pointsEarned} pts)';
+      _message = 'UNSTABLE STACK! (+$pointsEarned pts)';
       _messageColor = Colors.orangeAccent;
     }
 
@@ -535,7 +517,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     );
   }
 
-  /// 4-Button row with full/half/no press visual feedback
   Widget _buildFourButtonRow() {
     return AnimatedBuilder(
       animation: input,
@@ -556,8 +537,7 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
 
             if (isTarget && isPressed) {
               fillRatio = _holdProgress;
-              final pct = (fillRatio * 100).round();
-              labelText = '$pct%';
+              labelText = '${(fillRatio * 100).round()}%';
               final pressRes = classifyBurgerHold(fillRatio);
               if (pressRes == PressResult.full) {
                 labelColor = Colors.greenAccent;
@@ -603,21 +583,15 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
                     const SizedBox(height: 4),
                     Listener(
                       onPointerDown: (_) {
-                        setState(() {
-                          _touchDownLanes.add(index);
-                        });
+                        setState(() => _touchDownLanes.add(index));
                         _handleCellDown(index);
                       },
                       onPointerUp: (_) {
-                        setState(() {
-                          _touchDownLanes.remove(index);
-                        });
+                        setState(() => _touchDownLanes.remove(index));
                         _handleCellUp(index);
                       },
                       onPointerCancel: (_) {
-                        setState(() {
-                          _touchDownLanes.remove(index);
-                        });
+                        setState(() => _touchDownLanes.remove(index));
                         _handleCellUp(index);
                       },
                       child: Container(
@@ -905,7 +879,7 @@ class _Burger25DPainter extends CustomPainter {
         } else if (dropStep == _DropStep.dropping) {
           renderX = lockedX;
           renderY = currentY;
-          startZ = uiLerp(startZ, stackHeightZ, dropAnimProgress);
+          startZ += (stackHeightZ - startZ) * dropAnimProgress;
         }
 
         final shadowPaint = Paint()..color = Colors.black.withValues(alpha: 0.45);
@@ -921,13 +895,12 @@ class _Burger25DPainter extends CustomPainter {
           currentIngredient,
           _ingredientColors[currentIngredient] ?? Colors.brown,
           scale: currentSizeScale,
-          isFalling: false,
         );
       }
     }
   }
 
-  void _drawIsometricLayer(Canvas canvas, Offset center, String name, Color color, {double scale = 1.0, bool isFalling = false}) {
+  void _drawIsometricLayer(Canvas canvas, Offset center, String name, Color color, {double scale = 1.0}) {
     const double baseThickness = 18.0;
     final double thickness = baseThickness * scale;
     final double baseWidth = 140.0 * scale;
@@ -983,8 +956,6 @@ class _Burger25DPainter extends CustomPainter {
       canvas.drawOval(Rect.fromCenter(center: center, width: (baseWidth + 6), height: (baseHeight + 4)), leafBorder);
     }
   }
-
-  double uiLerp(double a, double b, double t) => a + (b - a) * t;
 
   @override
   bool shouldRepaint(covariant _Burger25DPainter oldDelegate) => true;

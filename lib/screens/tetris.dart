@@ -18,7 +18,6 @@ enum GameSpeed {
   const GameSpeed(this.label, this.duration);
 }
 
-/// 4-lane control colors matching D, F, J, K
 const List<Color> _controlColors = [
   Color(0xFFF0788C), // D - Pink (Move Left / Wrap)
   Color(0xFF7BD095), // F - Green (Rotate Clockwise)
@@ -29,7 +28,6 @@ const List<Color> _controlColors = [
 const List<String> _controlKeys = ['D', 'F', 'J', 'K'];
 const List<String> _controlActions = ['Move Left (Wrap)', 'Rotate CW', 'Save to Bank', 'Hard Drop'];
 
-// Tetris shapes and colors
 const int gridWidth = 10;
 const int gridHeight = 20;
 
@@ -111,7 +109,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
   int _score = 0;
   int _linesCleared = 0;
   bool _early = false;
-  String _message = 'D: Move Left (Wrap), F: Rotate CW';
 
   @override
   void initState() {
@@ -169,7 +166,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
       _linesCleared = 0;
       _bankedPiece = null;
       _early = false;
-      _message = 'Game started! D: Move Left (Wrap), F: Rotate CW';
       _total
         ..reset()
         ..start();
@@ -235,7 +231,6 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
       if (!_checkCollision(targetX, _currentY, _currentShape)) {
         _currentX = targetX;
       } else {
-        // Wrap around to the rightmost valid position on the grid
         for (int x = gridWidth - 1; x > _currentX; x--) {
           if (!_checkCollision(x, _currentY, _currentShape)) {
             _currentX = x;
@@ -286,14 +281,19 @@ class _TetrisPlayScreenState extends State<TetrisPlayScreen> {
 
   void _onButtonDown(int index) {
     if (_phase != _Phase.playing) return;
-    if (index == 0) {
-      _moveLeft();
-    } else if (index == 1) {
-      _rotateClockwise();
-    } else if (index == 2) {
-      _saveToBank();
-    } else if (index == 3) {
-      _hardDrop();
+    switch (index) {
+      case 0:
+        _moveLeft();
+        break;
+      case 1:
+        _rotateClockwise();
+        break;
+      case 2:
+        _saveToBank();
+        break;
+      case 3:
+        _hardDrop();
+        break;
     }
   }
 

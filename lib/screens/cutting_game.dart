@@ -10,11 +10,11 @@ import 'training_history_service.dart';
 enum _Phase { setup, cutting, done }
 
 class _IngredientTask {
-  final int lane; // 0: Pink (D), 1: Green (F), 2: Yellow (J), 3: Blue (K)
-  final bool isHold; // true = Hold continuously, false = Press per cut
+  final int lane;
+  final bool isHold;
   final String name;
-  final int totalPieces; // Total pieces desired
-  final int slicesPerCut; // Hits or hold multiplier per cut line
+  final int totalPieces;
+  final int slicesPerCut;
 
   int get totalCuts => max(1, totalPieces - 1);
   int get totalHitsNeeded => totalCuts * slicesPerCut;
@@ -61,7 +61,6 @@ const List<Color> _laneColors = [
 const List<String> _laneKeyLabels = ['D', 'F', 'J', 'K'];
 const List<String> _laneNames = ['Pink (D)', 'Green (F)', 'Yellow (J)', 'Blue (K)'];
 
-// Ingredient pools by difficulty
 const _easyPool = ['Carrot', 'Cucumber', 'Cheese', 'Pumpkin'];
 const _mediumPool = ['Carrot', 'Cucumber', 'Steak', 'Cheese', 'Pumpkin', 'Pineapple', 'Frozen Meat'];
 const _hardPool = ['Carrot', 'Steak', 'Pumpkin', 'Pineapple', 'Frozen Meat', 'Coconut'];
@@ -88,7 +87,7 @@ class _FourTileKitchenCutterScreenState
   final FocusNode _focusNode = FocusNode();
   final Random _random = Random();
   final PressStats _stats = PressStats();
-  final Set<int> _touchDownLanes = {}; // Tracks active touch, mouse, and keyboard button presses
+  final Set<int> _touchDownLanes = {};
 
   final List<_IngredientTask> _tasks = [];
   late final Ticker _ticker;
@@ -124,7 +123,7 @@ class _FourTileKitchenCutterScreenState
     super.initState();
     input.allowed = _cells;
     input.onDown = _onDown;
-    input.onUp = _onUp;
+    input.onUp = (cell, _) => _onUp(cell);
     _ticker = createTicker(_tick);
   }
 
@@ -141,8 +140,8 @@ class _FourTileKitchenCutterScreenState
     final ingredients = _generateRandomTaskPool();
 
     for (final name in ingredients) {
-      final lane = _random.nextInt(4); // 4 Lanes
-      final isHold = _random.nextBool(); // Alternate hold vs tap per cut
+      final lane = _random.nextInt(4);
+      final isHold = _random.nextBool();
       final pieces = switch (_difficulty) {
         Difficulty.easy => 4,
         Difficulty.medium => 5,
@@ -171,7 +170,6 @@ class _FourTileKitchenCutterScreenState
       _phase = _Phase.cutting;
     });
 
-    // Request focus for keyboard input when game starts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_focusNode);
     });
@@ -184,9 +182,6 @@ class _FourTileKitchenCutterScreenState
     _feedbackColor = color;
   }
 
-  // ---------------------------------------------------------------------
-  // Keyboard Event Handler (D, F, J, K)
-  // ---------------------------------------------------------------------
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (_phase != _Phase.cutting) return KeyEventResult.ignored;
 
@@ -218,7 +213,7 @@ class _FourTileKitchenCutterScreenState
         setState(() {
           _touchDownLanes.remove(laneIndex!);
         });
-        _onUp(cell, 0);
+        _onUp(cell);
       }
       return KeyEventResult.handled;
     }
@@ -238,7 +233,6 @@ class _FourTileKitchenCutterScreenState
 
       final current = _tasks[_currentTaskIndex];
 
-      // Continuous hold mechanism for hold tasks
       if (current.isHold && current.state == 1) {
         final cell = _cells[current.lane];
         final isInputActive = input.isDown(cell) || _touchDownLanes.contains(current.lane);
@@ -281,10 +275,8 @@ class _FourTileKitchenCutterScreenState
         current.state = 1;
       }
 
-      // Tap per chop impact
       if (!current.isHold) {
         current.completedHits++;
-        
         final hitInCurrentCut = ((current.completedHits - 1) % current.slicesPerCut) + 1;
         if (current.slicesPerCut > 1 && hitInCurrentCut < current.slicesPerCut) {
           _flash('HACK! ($hitInCurrentCut/${current.slicesPerCut})', Colors.orangeAccent);
@@ -300,7 +292,7 @@ class _FourTileKitchenCutterScreenState
     });
   }
 
-  void _onUp(int cell, double seconds) {
+  void _onUp(int cell) {
     if (_phase != _Phase.cutting) return;
     final lane = _cells.indexOf(cell);
     if (lane < 0 || _currentTaskIndex >= _tasks.length) return;
@@ -436,7 +428,7 @@ class _FourTileKitchenCutterScreenState
               borderRadius: BorderRadius.circular(16),
               child: AnimatedBuilder(
                 animation: input,
-                builder: (_, __) => CustomPaint(
+                builder: (context, _) => CustomPaint(
                   painter: _KitchenCuttingPainter(
                     currentTask: currentTask,
                     isHolding: isDown,
@@ -469,7 +461,6 @@ class _FourTileKitchenCutterScreenState
             ),
           ],
           const SizedBox(height: 12),
-          // Interactive 4-Button Input Row
           _buildFourButtonRow(),
           const SizedBox(height: 8),
           TextButton(
@@ -481,7 +472,6 @@ class _FourTileKitchenCutterScreenState
     );
   }
 
-  /// Builds 4 interactive lane buttons matching Pink, Green, Yellow, and Blue color scheme
   Widget _buildFourButtonRow() {
     return AnimatedBuilder(
       animation: input,
@@ -498,13 +488,10 @@ class _FourTileKitchenCutterScreenState
             double fillRatio = 0.0;
             String labelText = _laneKeyLabels[index];
             Color labelColor = Colors.white;
-            Color borderColor = color;
-            double borderWidth = isTargetLane ? 5.0 : 3.0;
 
             if (isTargetLane && currentTask.isHold && currentTask.state == 1) {
               fillRatio = currentTask.holdProgress;
-              final pct = (fillRatio * 100).round();
-              labelText = '$pct%';
+              labelText = '${(fillRatio * 100).round()}%';
               labelColor = Colors.amberAccent;
             } else if (isPressed) {
               fillRatio = 1.0;
@@ -515,22 +502,16 @@ class _FourTileKitchenCutterScreenState
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
                 child: Listener(
                   onPointerDown: (_) {
-                    setState(() {
-                      _touchDownLanes.add(index);
-                    });
+                    setState(() => _touchDownLanes.add(index));
                     _onDown(cell);
                   },
                   onPointerUp: (_) {
-                    setState(() {
-                      _touchDownLanes.remove(index);
-                    });
-                    _onUp(cell, 0);
+                    setState(() => _touchDownLanes.remove(index));
+                    _onUp(cell);
                   },
                   onPointerCancel: (_) {
-                    setState(() {
-                      _touchDownLanes.remove(index);
-                    });
-                    _onUp(cell, 0);
+                    setState(() => _touchDownLanes.remove(index));
+                    _onUp(cell);
                   },
                   child: Container(
                     height: 80,
@@ -538,8 +519,8 @@ class _FourTileKitchenCutterScreenState
                       color: const Color(0xFF14143A),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: borderColor,
-                        width: borderWidth,
+                        color: color,
+                        width: isTargetLane ? 5.0 : 3.0,
                       ),
                       boxShadow: isPressed || isTargetLane
                           ? [
@@ -652,7 +633,6 @@ class _KitchenCuttingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Wood Cutting Board Background
     final rect = Offset.zero & size;
     canvas.drawRect(
       rect,
@@ -670,7 +650,6 @@ class _KitchenCuttingPainter extends CustomPainter {
     );
     canvas.drawRRect(boardRect, Paint()..color = const Color(0xFF8D6E63));
 
-    // Wood Grain Lines
     final grainPaint = Paint()
       ..color = const Color(0xFF795548).withValues(alpha: 0.4)
       ..strokeWidth = 2
@@ -685,7 +664,6 @@ class _KitchenCuttingPainter extends CustomPainter {
     final ingColor = _ingredientColors[currentTask!.name] ?? Colors.orange;
     final progress = currentTask!.progress.clamp(0.0, 1.0);
 
-    // 2. Ingredient Name & Percentage Display
     final toughnessBadge = currentTask!.slicesPerCut > 1 ? ' [${currentTask!.slicesPerCut}x Tough]' : '';
     final percentText = '${(progress * 100).toStringAsFixed(0)}%';
     final textPainter = TextPainter(
@@ -715,7 +693,6 @@ class _KitchenCuttingPainter extends CustomPainter {
 
     final numSeparatedSlices = isFullyDone ? totalPieces : completedCutsCount;
 
-    // 3. Render Cut Slices (Sliding cleanly leftwards away from remaining block)
     for (int i = 0; i < numSeparatedSlices; i++) {
       final origX = leftX + (i + 0.5) * pieceWidth;
       final shiftLeft = 12.0 + (numSeparatedSlices - 1 - i) * 3.0;
@@ -732,7 +709,6 @@ class _KitchenCuttingPainter extends CustomPainter {
         Paint()..color = ingColor,
       );
 
-      // Top specular highlight
       if (pieceWidth > 10) {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
@@ -747,7 +723,6 @@ class _KitchenCuttingPainter extends CustomPainter {
         );
       }
 
-      // Seam line on right edge of slice
       final edgeX = pieceRect.right - 1;
       canvas.drawLine(
         Offset(edgeX, center.dy - 28),
@@ -758,7 +733,6 @@ class _KitchenCuttingPainter extends CustomPainter {
       );
     }
 
-    // 4. Render Remaining Uncut Block
     if (!isFullyDone && numSeparatedSlices < totalPieces) {
       final uncutLeftX = leftX + (numSeparatedSlices * pieceWidth);
       final uncutWidth = totalWidth - (numSeparatedSlices * pieceWidth);
@@ -791,7 +765,6 @@ class _KitchenCuttingPainter extends CustomPainter {
       }
     }
 
-    // 5. Knife Target Position (Positioned strictly along cut lines 1 through totalCuts)
     final double knifeTargetX;
     if (currentTask!.isHold) {
       final startCutX = leftX + pieceWidth;
@@ -802,22 +775,19 @@ class _KitchenCuttingPainter extends CustomPainter {
       knifeTargetX = leftX + currentCutMark * pieceWidth;
     }
 
-    double knifeYOffset = -45.0;
+    double knifeYOffset;
     if (currentTask!.isHold) {
       knifeYOffset = isHolding
           ? 5.0 + (sin(animationTime * 30) * 4.0)
           : -45.0;
     } else {
-      if (isHolding) {
-        knifeYOffset = 12.0;
-      } else {
-        knifeYOffset = -35.0 + (sin(animationTime * 12) * 4.0);
-      }
+      knifeYOffset = isHolding
+          ? 12.0
+          : -35.0 + (sin(animationTime * 12) * 4.0);
     }
 
     final knifeCenter = Offset(knifeTargetX, center.dy - 65 + knifeYOffset);
 
-    // Blade Path
     final bladePath = Path()
       ..moveTo(knifeCenter.dx - 6, knifeCenter.dy)
       ..lineTo(knifeCenter.dx + 6, knifeCenter.dy)
@@ -827,7 +797,6 @@ class _KitchenCuttingPainter extends CustomPainter {
 
     canvas.drawPath(bladePath, Paint()..color = Colors.blueGrey.shade100);
 
-    // Blade Edge Highlight
     canvas.drawLine(
       Offset(knifeCenter.dx - 6, knifeCenter.dy),
       Offset(knifeCenter.dx - 6, knifeCenter.dy + 85),
@@ -836,7 +805,6 @@ class _KitchenCuttingPainter extends CustomPainter {
         ..strokeWidth = 2,
     );
 
-    // Knife Handle
     final handleRect = Rect.fromCenter(
       center: knifeCenter.translate(0, -32),
       width: 14,
