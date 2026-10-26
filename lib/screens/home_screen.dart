@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:rehab_sudoku/screens/tetris.dart';
 import '../main.dart';
 import 'light_chase_screen.dart';
 import 'rhythm_screen.dart';
 import 'two_hand_play.dart';
 import 'progress_screen.dart';
-import 'burger_catch_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';

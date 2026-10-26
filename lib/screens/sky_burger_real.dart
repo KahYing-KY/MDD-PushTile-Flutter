@@ -12,8 +12,8 @@ enum _Phase { setup, playing, collapsing, done }
 class _BurgerLayer {
   final String name;
   final Color color;
-  final double relX; // Relative X offset from layer below
-  final double relY; // Relative Y offset from layer below
+  final double relX;
+  final double relY;
   final double sizeScale;
   _BurgerLayer(this.name, this.color, this.relX, this.relY, {this.sizeScale = 1.0});
 }
@@ -32,20 +32,13 @@ const List<String> _ingredientPool = [
   'Patty', 'Cheese', 'Tomato', 'Lettuce', 'Pickle'
 ];
 
-/// Custom lane colors for Left & Right controls
 const List<Color> _laneColors = [
-  Color(0xFFF0788C), // Lane 0 - Left (D / F)
-  Color(0xFF63A7EF), // Lane 1 - Right (J / K)
+  Color(0xFFF0788C), // Left (D / F)
+  Color(0xFF63A7EF), // Right (J / K)
 ];
 
 const List<String> _laneKeyLabels = ['D / F', 'J / K'];
 const List<String> _laneDirLabels = ['MOVE LEFT', 'MOVE RIGHT'];
-
-PressResult classifyBurgerHold(double ratio) {
-  if (ratio >= 0.90) return PressResult.full;
-  if (ratio >= 0.45) return PressResult.half;
-  return PressResult.none;
-}
 
 class SkyBurger2DScreen extends StatefulWidget {
   const SkyBurger2DScreen({super.key});
@@ -68,7 +61,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   double _t = 0;
   double _collapseProgress = 0.0;
 
-  // 2 control lanes: 0: Left, 1: Right
   final List<int> _cells = const [0, 1];
 
   int _score = 0;
@@ -78,20 +70,22 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   bool _collapsed = false;
   String _message = '';
   Color _messageColor = Colors.white;
-  double _lastAlignmentAccuracy = 100.0;
-  double _instability = 0.0; // Tower balance instability (0.0 to 1.0)
+  double _instability = 0.0;
+  bool _lastCatchWasFirmGrip = false;
 
-  // Horizontal Bun Position (-1.8 to 1.8)
   double _bunX = 0.0;
   final double _bunY = 0.0;
 
-  // Falling Ingredient properties
   String _currentIngredient = 'Patty';
   double _ingX = 0.0;
   final double _ingY = 0.0;
-  double _ingZ = 300.0; // Altitude in sky
+  double _ingZ = 300.0;
   double _fallSpeed = 180.0;
   double _currentSizeScale = 1.0;
+
+  // Track initial bun position and active press duration per ingredient fall
+  double _startTopAbsX = 0.0;
+  double _pressDurationThisTurn = 0.0;
 
   final List<_BurgerLayer> _burgerStack = [];
 
@@ -99,8 +93,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
   void initState() {
     super.initState();
     input.allowed = _cells;
-    input.onDown = _onDown;
-    input.onUp = _onUp;
     _ticker = createTicker(_onTick);
   }
 
@@ -129,8 +121,8 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
       _layersStacked = 0;
       _collapsed = false;
       _collapseProgress = 0.0;
-      _lastAlignmentAccuracy = 100.0;
       _instability = 0.0;
+      _lastCatchWasFirmGrip = false;
       _t = 0;
       _phase = _Phase.playing;
       _spawnNextIngredient();
@@ -154,12 +146,15 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     if (_difficulty == Difficulty.hard) baseSpeed = 290.0;
 
     _fallSpeed = baseSpeed + (_layersStacked * 4.0);
+    _currentSizeScale = _difficulty == Difficulty.hard ? (0.7 + _random.nextDouble() * 0.5) : 1.0;
 
-    if (_difficulty == Difficulty.hard) {
-      _currentSizeScale = 0.7 + _random.nextDouble() * 0.5;
-    } else {
-      _currentSizeScale = 1.0;
+    // Calculate top of stack X position at spawn
+    double cumulativeRelX = 0.0;
+    for (final layer in _burgerStack) {
+      cumulativeRelX += layer.relX;
     }
+    _startTopAbsX = _bunX + cumulativeRelX;
+    _pressDurationThisTurn = 0.0;
 
     _message = 'Catch the falling $_currentIngredient!';
     _messageColor = Colors.white;
@@ -171,34 +166,27 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     int? laneIndex;
     final keyLabel = event.logicalKey.keyLabel.toUpperCase();
     if (keyLabel == 'D' || keyLabel == 'F' || event.logicalKey == LogicalKeyboardKey.keyD || event.logicalKey == LogicalKeyboardKey.keyF) {
-      laneIndex = 0; // Left
+      laneIndex = 0;
     } else if (keyLabel == 'J' || keyLabel == 'K' || event.logicalKey == LogicalKeyboardKey.keyJ || event.logicalKey == LogicalKeyboardKey.keyK) {
-      laneIndex = 1; // Right
+      laneIndex = 1;
     }
 
     if (laneIndex == null) return KeyEventResult.ignored;
 
     if (event is KeyDownEvent) {
       if (!_touchDownLanes.contains(laneIndex)) {
-        setState(() {
-          _touchDownLanes.add(laneIndex!);
-        });
+        setState(() => _touchDownLanes.add(laneIndex!));
       }
       return KeyEventResult.handled;
     } else if (event is KeyUpEvent) {
       if (_touchDownLanes.contains(laneIndex)) {
-        setState(() {
-          _touchDownLanes.remove(laneIndex!);
-        });
+        setState(() => _touchDownLanes.remove(laneIndex!));
       }
       return KeyEventResult.handled;
     }
 
     return KeyEventResult.ignored;
   }
-
-  void _onDown(int cell) {}
-  void _onUp(int cell, double sec) {}
 
   bool _isLanePressed(int laneIndex) {
     return input.isDown(_cells[laneIndex]) || _touchDownLanes.contains(laneIndex);
@@ -210,19 +198,18 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     _t = newT;
 
     if (_phase == _Phase.playing) {
-      // Horizontal Movement Logic
       double moveX = 0.0;
-      if (_isLanePressed(0)) moveX -= 1.0; // Left
-      if (_isLanePressed(1)) moveX += 1.0; // Right
+      if (_isLanePressed(0)) moveX -= 1.0;
+      if (_isLanePressed(1)) moveX += 1.0;
 
       const double moveSpeed = 2.8;
       _bunX = (_bunX + moveX * moveSpeed * dt).clamp(-1.8, 1.8);
 
-      if (moveX != 0) {
-        _stats.add(PressResult.full);
+      // Accumulate press duration while moving
+      if (moveX != 0.0) {
+        _pressDurationThisTurn += dt;
       }
 
-      // Drop ingredient straight down
       _ingZ -= _fallSpeed * dt;
       if (_ingZ <= 0.0) {
         _ingZ = 0.0;
@@ -262,10 +249,33 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
       return;
     }
 
-    _lastAlignmentAccuracy = ((1.0 - (catchDistance / maxCatchDistance)).clamp(0.0, 1.0)) * 100;
+    // Evaluate press quality based on distance to target vs press duration
+    const double maxMoveSpeed = 2.8;
+    final double requiredDist = (_ingX - _startTopAbsX).abs();
+    final double requiredDuration = requiredDist / maxMoveSpeed;
+
+    PressResult pressResult;
+    if (requiredDist < 0.12) {
+      // Ingredient dropped right on top of the bun
+      pressResult = PressResult.full;
+    } else {
+      final double ratio = _pressDurationThisTurn / requiredDuration;
+      if (ratio >= 0.90) {
+        pressResult = PressResult.full; // Moved full distance to target
+      } else if (ratio >= 0.45) {
+        pressResult = PressResult.half; // Moved at least halfway to target
+      } else {
+        pressResult = PressResult.none; // Less than half distance moved
+      }
+    }
+
+    // Record evaluated press result for session stats
+    _stats.add(pressResult);
+
+    final bool isFullGrip = pressResult == PressResult.full;
+    _lastCatchWasFirmGrip = isFullGrip;
 
     final double newRelX = dx * 0.75;
-
     _burgerStack.add(_BurgerLayer(
       _currentIngredient,
       _ingredientColors[_currentIngredient] ?? Colors.brown,
@@ -278,7 +288,6 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
 
     double totalX = 0.0;
     double currentCumX = 0.0;
-
     for (int i = 0; i < _burgerStack.length; i++) {
       currentCumX += _burgerStack[i].relX;
       totalX += currentCumX;
@@ -286,7 +295,10 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
 
     final double comX = (totalX / _burgerStack.length).abs();
     final double heightFactor = 1.0 + (_layersStacked * 0.15);
-    _instability = (comX * heightFactor / 1.0).clamp(0.0, 1.2);
+    
+    // Full press gives Firm Grip (-30% instability penalty)
+    final double gripDampening = isFullGrip ? 0.70 : (pressResult == PressResult.half ? 0.90 : 1.0);
+    _instability = (comX * heightFactor * gripDampening / 1.0).clamp(0.0, 1.2);
 
     if (_instability >= 1.0) {
       _collapsed = true;
@@ -300,21 +312,31 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
     }
 
     int pointsEarned = 0;
+    String catchQuality = '';
     if (catchDistance < 0.25) {
       pointsEarned = 350 + (_combo * 60);
-      _message = 'PERFECT CATCH! (+${pointsEarned} pts)';
+      catchQuality = 'PERFECT CATCH!';
       _messageColor = Colors.greenAccent;
       _combo++;
     } else if (catchDistance < 0.6) {
       pointsEarned = 180 + (_combo * 25);
-      _message = 'GOOD CATCH! (+${pointsEarned} pts)';
+      catchQuality = 'GOOD CATCH!';
       _messageColor = Colors.lightBlueAccent;
       _combo++;
     } else {
       _combo = 1;
       pointsEarned = 60;
-      _message = 'OFF-CENTER CATCH! (+${pointsEarned} pts)';
+      catchQuality = 'OFF-CENTER CATCH!';
       _messageColor = Colors.orangeAccent;
+    }
+
+    if (pressResult == PressResult.full) {
+      pointsEarned = (pointsEarned * 1.5).round();
+      _message = '$catchQuality ✊ FULL PRESS (+50% pts, -30% sway)';
+    } else if (pressResult == PressResult.half) {
+      _message = '$catchQuality ⚡ HALF PRESS (Reached Halfway)';
+    } else {
+      _message = '$catchQuality ⚠️ SHORT PRESS (Under Halfway)';
     }
 
     _score += pointsEarned;
@@ -335,7 +357,9 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
       halfPresses: _stats.half,
       noPresses: _stats.none,
       completed: !_collapsed,
-      notes: 'Score $_score | Ingredients Caught $_layersStacked | Instability: ${(_instability * 100).toStringAsFixed(0)}% ${_collapsed ? "[Toppled]" : ""}',
+      notes: 'Score $_score | Ingredients Caught $_layersStacked | '
+          'Instability: ${(_instability * 100).toStringAsFixed(0)}% '
+          '${_collapsed ? "[Toppled]" : ""}',
     ));
   }
 
@@ -378,9 +402,11 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
         const SizedBox(height: 10),
         const Text(
           'Move the bottom bun left and right to catch falling ingredients!\n\n'
-          '• Use keys [D/F] for Left and [J/K] for Right, or tap the screen buttons.\n'
-          '• Off-center catches make your tower sway and tip over.\n'
-          '• Balance the tower as it gets higher to avoid toppling!',
+          '• Use keys [D/F] for Left and [J/K] for Right, or tap screen buttons.\n'
+          '• Holding press long enough to reach target = FULL PRESS (Firm Grip bonus).\n'
+          '• Pressing enough to reach halfway = HALF PRESS.\n'
+          '• Less than halfway = NO PRESS.\n'
+          '• Off-center catches make your tower sway and tip over.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 15),
         ),
@@ -439,7 +465,25 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Combo: x$_combo', style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 15)),
-              Text('Best Combo: x$_bestCombo', style: const TextStyle(color: Colors.white60, fontSize: 13)),
+              Row(
+                children: [
+                  Icon(
+                    _lastCatchWasFirmGrip ? Icons.back_hand_rounded : Icons.pan_tool_outlined,
+                    size: 14,
+                    color: _lastCatchWasFirmGrip ? Colors.greenAccent : Colors.orangeAccent,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _lastCatchWasFirmGrip ? 'FIRM GRIP ACTIVE' : 'LOOSE GRIP',
+                    style: TextStyle(
+                      color: _lastCatchWasFirmGrip ? Colors.greenAccent : Colors.orangeAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              Text('Best: x$_bestCombo', style: const TextStyle(color: Colors.white60, fontSize: 13)),
             ],
           ),
           const SizedBox(height: 4),
@@ -447,7 +491,8 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
             height: 32,
             child: Center(
               child: Text(_message,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _messageColor)),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: _messageColor)),
             ),
           ),
           Expanded(
@@ -467,6 +512,7 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
                   time: _t,
                   phase: _phase,
                   collapseProgress: _collapseProgress,
+                  isFirmGripActive: _lastCatchWasFirmGrip,
                 ),
                 child: const SizedBox.expand(),
               ),
@@ -502,21 +548,9 @@ class _SkyBurger2DScreenState extends State<SkyBurger2DScreen>
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6.0),
                 child: Listener(
-                  onPointerDown: (_) {
-                    setState(() {
-                      _touchDownLanes.add(index);
-                    });
-                  },
-                  onPointerUp: (_) {
-                    setState(() {
-                      _touchDownLanes.remove(index);
-                    });
-                  },
-                  onPointerCancel: (_) {
-                    setState(() {
-                      _touchDownLanes.remove(index);
-                    });
-                  },
+                  onPointerDown: (_) => setState(() => _touchDownLanes.add(index)),
+                  onPointerUp: (_) => setState(() => _touchDownLanes.remove(index)),
+                  onPointerCancel: (_) => setState(() => _touchDownLanes.remove(index)),
                   child: Container(
                     height: 72,
                     decoration: BoxDecoration(
@@ -634,6 +668,7 @@ class _BurgerCatchPainter extends CustomPainter {
   final double time;
   final _Phase phase;
   final double collapseProgress;
+  final bool isFirmGripActive;
 
   _BurgerCatchPainter({
     required this.burgerStack,
@@ -648,6 +683,7 @@ class _BurgerCatchPainter extends CustomPainter {
     required this.time,
     required this.phase,
     required this.collapseProgress,
+    required this.isFirmGripActive,
   });
 
   @override
@@ -663,7 +699,6 @@ class _BurgerCatchPainter extends CustomPainter {
         ).createShader(wallRect),
     );
 
-    // Background Grid
     final tilePaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.03)
       ..strokeWidth = 1.0;
@@ -688,7 +723,9 @@ class _BurgerCatchPainter extends CustomPainter {
       Offset(0, size.height * 0.65),
       Offset(size.width, size.height * 0.65),
       Paint()
-        ..color = Colors.cyanAccent.withValues(alpha: 0.4)
+        ..color = isFirmGripActive
+            ? Colors.greenAccent.withValues(alpha: 0.6)
+            : Colors.cyanAccent.withValues(alpha: 0.4)
         ..strokeWidth = 3.0,
     );
 
@@ -704,7 +741,6 @@ class _BurgerCatchPainter extends CustomPainter {
       return Offset(screenX, screenY);
     }
 
-    // Ground Target Shadow for Falling Ingredient
     final Offset shadowCenter = isoToScreen(ingX, ingY, 0);
     canvas.drawOval(
       Rect.fromCenter(center: shadowCenter, width: 130 * currentSizeScale, height: 55 * currentSizeScale),
@@ -718,10 +754,8 @@ class _BurgerCatchPainter extends CustomPainter {
         ..strokeWidth = 2.0,
     );
 
-    // Render moving Burger Stack on top of the moving Bun
     double currentCumX = 0.0;
     double currentCumY = 0.0;
-    // Reduced swaying multiplier from 0.45 to 0.12 and oscillation speed to 3.0 for subtle sway
     final double swaySensing = sin(time * 3.0) * instability * 0.12;
 
     for (int i = 0; i < burgerStack.length; i++) {
@@ -746,7 +780,6 @@ class _BurgerCatchPainter extends CustomPainter {
       _drawIsometricLayer(canvas, layerCenter, layer.name, layer.color, scale: layer.sizeScale);
     }
 
-    // Render Falling Ingredient in air directly above target X
     if (phase == _Phase.playing) {
       final Offset fallingCenter = isoToScreen(ingX, ingY, ingZ + stackHeightZ);
       _drawIsometricLayer(
@@ -762,7 +795,9 @@ class _BurgerCatchPainter extends CustomPainter {
         fallingCenter,
         topStackCenter,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.15)
+          ..color = isFirmGripActive
+              ? Colors.greenAccent.withValues(alpha: 0.4)
+              : Colors.white.withValues(alpha: 0.15)
           ..strokeWidth = 1.5
           ..style = PaintingStyle.stroke,
       );
@@ -776,7 +811,6 @@ class _BurgerCatchPainter extends CustomPainter {
     final double baseHeight = 64.0 * scale;
 
     final bottomCenter = center.translate(0, thickness);
-
     final sideColor = Color.lerp(color, Colors.black, 0.35)!;
     final sidePaint = Paint()..color = sideColor;
 

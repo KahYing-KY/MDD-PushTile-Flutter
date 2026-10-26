@@ -24,25 +24,29 @@ const _ingredients = [
 
 class BurgerCatchScreen extends StatefulWidget {
   const BurgerCatchScreen({super.key});
+
   @override
   State<BurgerCatchScreen> createState() => _BurgerCatchScreenState();
 }
 
 class _BurgerCatchScreenState extends State<BurgerCatchScreen>
     with SingleTickerProviderStateMixin {
-  static const _cells = [3, 5]; // G, J: same physical keys as two-tile rhythm
+  static const _cells = [3, 5]; // G, J
   final input = PushController();
   final _rng = Random();
   final _stats = PressStats();
   late final Ticker _ticker;
+
   _Phase _phase = _Phase.setup;
   Difficulty _difficulty = Difficulty.easy;
   late List<_Ingredient> _order;
   final List<_Ingredient> _stack = [];
+
   int _index = 0, _lane = 0, _bunLane = 0, _caught = 0, _missed = 0;
-  int _wrong = 0, _score = 0, _moves = 0;
-  double _time = 0, _spawnAt = 0, _reactionTotal = 0;
+  int _score = 0, _moves = 0;
+  double _time = 0, _spawnAt = 0;
   bool _early = false;
+
   String _message = '';
   Color _messageColor = Colors.white;
 
@@ -51,12 +55,14 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
         Difficulty.medium => 3.5,
         Difficulty.hard => 2.5,
       };
+
   int get _orderLength => switch (_difficulty) {
         Difficulty.easy => 4,
         Difficulty.medium => 6,
         Difficulty.hard => 8,
       };
-  double get _progress => ((_time - _spawnAt) / _fallSeconds).clamp(0, 1);
+
+  double get _progress => ((_time - _spawnAt) / _fallSeconds).clamp(0.0, 1.0);
 
   @override
   void initState() {
@@ -79,13 +85,14 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
     input.clear();
     setState(() {
       _order = List.generate(
-        _orderLength, (_) => _ingredients[_rng.nextInt(_ingredients.length)]);
+        _orderLength,
+        (_) => _ingredients[_rng.nextInt(_ingredients.length)],
+      );
       _stack.clear();
-      _index = _caught = _missed = _wrong = _score = _moves = 0;
-      _reactionTotal = _time = 0;
+      _index = _caught = _missed = _score = _moves = 0;
+      _time = _spawnAt = 0;
       _bunLane = _rng.nextInt(2);
       _lane = _rng.nextInt(2);
-      _spawnAt = 0;
       _early = false;
       _message = 'Catch ${_order.first.name}!';
       _messageColor = Colors.white;
@@ -99,6 +106,7 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
     if (_phase != _Phase.playing) return;
     final selected = _cells.indexOf(cell);
     if (selected < 0) return;
+
     setState(() {
       if (_bunLane != selected) _moves++;
       _bunLane = selected;
@@ -110,13 +118,13 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
   void _tick(Duration elapsed) {
     if (!mounted || _phase != _Phase.playing) return;
     _time = elapsed.inMicroseconds / 1000000;
+
     setState(() {
       if (_progress >= 1) {
         if (_bunLane == _lane) {
           _stack.add(_order[_index]);
           _caught++;
           _score += 100;
-          _reactionTotal += _fallSeconds;
           _stats.add(PressResult.full);
           _message = 'Caught ${_order[_index].name}! +100';
           _messageColor = Colors.greenAccent;
@@ -126,11 +134,12 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
           _message = 'Missed ${_order[_index].name}. Try the next one!';
           _messageColor = Colors.orangeAccent;
         }
+
         _index++;
         if (_index >= _order.length) {
           _finish();
         } else {
-          _spawnAt = _time + 0.6; // brief pause between ingredients
+          _spawnAt = _time + 0.6;
           _lane = _rng.nextInt(2);
         }
       }
@@ -143,6 +152,7 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
     input.clear();
     _early = early;
     _phase = _Phase.done;
+
     TrainingHistoryService.instance.addSession(TrainingSession(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       activity: 'Burger Catch (2 Tiles)',
@@ -229,6 +239,7 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
   Widget _play() {
     final ingredient = _order[_index];
     final p = _progress;
+
     return Container(
       color: const Color(0xFF10182A),
       padding: const EdgeInsets.all(12),
@@ -304,7 +315,8 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
                       children: [
                         for (final item in _stack.reversed.take(4))
                           Text(item.emoji,
-                              style: const TextStyle(fontSize: 24, height: 0.9)),
+                              style: const TextStyle(
+                                  fontSize: 24, height: 0.9)),
                         const Text('🍞', style: TextStyle(fontSize: 58)),
                       ],
                     ),
@@ -353,8 +365,8 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text('🍔', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 72)),
+        const Text('🍔',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 72)),
         Text(_early ? 'Session stopped' : 'Burger complete!',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
@@ -390,8 +402,11 @@ class _BurgerCatchScreenState extends State<BurgerCatchScreen>
 
   Widget _resultRow(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [Text(label), Text(value,
-                style: const TextStyle(fontWeight: FontWeight.bold))]),
+        child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.bold))
+            ]),
       );
 }
