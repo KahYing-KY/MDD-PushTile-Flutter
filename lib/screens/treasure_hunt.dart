@@ -10,10 +10,10 @@ import 'training_history_service.dart';
 enum _HuntPhase { setup, playing, done }
 
 const List<Color> _dirColors = [
-  Color(0xFFF0788C), // Lane 0 - Pink (West / Left)
-  Color(0xFF7BD095), // Lane 1 - Green (South / Down)
-  Color(0xFFFFC95C), // Lane 2 - Yellow (North / Up)
-  Color(0xFF63A7EF), // Lane 3 - Blue (East / Right)
+  Color(0xFFF0788C), // West / Left
+  Color(0xFF7BD095), // South / Down
+  Color(0xFFFFC95C), // North / Up
+  Color(0xFF63A7EF), // East / Right
 ];
 
 const List<String> _dirLabels = ['D  ←', 'F  ↓', 'J  ↑', 'K  →'];
@@ -27,9 +27,6 @@ PressResult classifyNoteHold(double heldSeconds, double targetDuration) {
   return PressResult.none;
 }
 
-// -----------------------------------------------------------------------------
-// 2.5D Tile Types & Landmarks
-// -----------------------------------------------------------------------------
 enum TileType {
   grass,
   path,
@@ -103,7 +100,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
     super.initState();
     input.allowed = _laneCells;
     input.onDown = _onDown;
-    input.onUp = _onUp;
+    input.onUp = (lane, _) => _onUp(lane);
     _ticker = createTicker(_onTick);
     _generateMap();
   }
@@ -116,16 +113,12 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // Fully Randomized Map Generation with Guaranteed 2-Step Solution Path
-  // ---------------------------------------------------------------------------
   void _generateMap() {
     _mapGrid = List.generate(
       mapHeight,
       (y) => List.generate(mapWidth, (x) => TileType.grass),
     );
 
-    // Outer Tree Borders
     for (int x = 0; x < mapWidth; x++) {
       _mapGrid[0][x] = TileType.tree;
       _mapGrid[mapHeight - 1][x] = TileType.tree;
@@ -135,14 +128,12 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
       _mapGrid[y][mapWidth - 1] = TileType.tree;
     }
 
-    // Even Start and Treasure Coordinates for 2-step Parity
     _playerX = 2;
     _playerY = 2 + (_random.nextInt(2) * 2);
-    
+
     _treasureX = 14 + (_random.nextInt(2) * 2);
     _treasureY = 14 + (_random.nextInt(2) * 2);
 
-    // Generate Guaranteed 2-Step Path
     final pathNodes = _generate2StepPath(
       Point(_playerX, _playerY),
       Point(_treasureX, _treasureY),
@@ -164,7 +155,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
 
     _mapGrid[_treasureY][_treasureX] = TileType.treasure;
 
-    // Randomize Landmark Positions
     final List<Map<String, dynamic>> landmarkDefs = [
       {'name': 'Mystic Obelisk', 'code': 'O', 'color': Colors.cyanAccent, 'icon': Icons.details, 'type': TileType.landmarkObelisk},
       {'name': 'Watchtower Ruin', 'code': 'W', 'color': Colors.amber, 'icon': Icons.fort, 'type': TileType.landmarkWatchtower},
@@ -202,7 +192,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
       }
     }
 
-    // Populate Water River Features
     int riverX = 8 + _random.nextInt(4);
     for (int y = 2; y < mapHeight - 2; y++) {
       Point<int> rPoint = Point(riverX, y);
@@ -211,14 +200,12 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
       }
     }
 
-    // Random Forest Density
     for (int i = 0; i < 35; i++) {
       int rx = 1 + _random.nextInt(mapWidth - 2);
       int ry = 1 + _random.nextInt(mapHeight - 2);
       Point<int> treeCandidate = Point(rx, ry);
 
-      if (!solutionTiles.contains(treeCandidate) &&
-          _mapGrid[ry][rx] == TileType.grass) {
+      if (!solutionTiles.contains(treeCandidate) && _mapGrid[ry][rx] == TileType.grass) {
         _mapGrid[ry][rx] = TileType.tree;
       }
     }
@@ -318,7 +305,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
     } else if (event is KeyUpEvent) {
       if (_touchDownLanes.contains(laneIndex)) {
         setState(() => _touchDownLanes.remove(laneIndex!));
-        _onUp(laneIndex, 0);
+        _onUp(laneIndex);
       }
       return KeyEventResult.handled;
     }
@@ -337,7 +324,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
     _lanePressStart[lane] = _t;
   }
 
-  void _onUp(int lane, double sec) {
+  void _onUp(int lane) {
     if (_phase != _HuntPhase.playing) return;
     final start = _lanePressStart.remove(lane);
     if (start == null) return;
@@ -361,13 +348,13 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
   }
 
   void _attemptMove(int lane, int requestedSteps, PressResult result) {
-    int dx = 0, dy = 0;
-    switch (lane) {
-      case 0: dx = -1; break; // West
-      case 1: dy = 1;  break; // South
-      case 2: dy = -1; break; // North
-      case 3: dx = 1;  break; // East
-    }
+    final (dx, dy) = switch (lane) {
+      0 => (-1, 0),
+      1 => (0, 1),
+      2 => (0, -1),
+      3 => (1, 0),
+      _ => (0, 0),
+    };
 
     int moved = 0;
     int targetX = _playerX;
@@ -408,12 +395,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
   bool _isWalkable(int x, int y) {
     if (x < 0 || x >= mapWidth || y < 0 || y >= mapHeight) return false;
     final tile = _mapGrid[y][x];
-    return tile != TileType.tree &&
-        tile != TileType.water &&
-        tile != TileType.landmarkWatchtower &&
-        tile != TileType.landmarkObelisk &&
-        tile != TileType.landmarkGrove &&
-        tile != TileType.landmarkCrag;
+    return tile == TileType.grass || tile == TileType.path || tile == TileType.treasure;
   }
 
   void _finish({bool early = false}) {
@@ -524,9 +506,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
       padding: const EdgeInsets.all(10),
       child: Column(
         children: [
-          // -------------------------------------------------------------------
-          // TOP DASHBOARD: Minimap (Outside Playing Area) + Status & Landmarks
-          // -------------------------------------------------------------------
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -537,7 +516,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Minimap Radar placed completely OUTSIDE the playing area
                 Container(
                   width: 125,
                   height: 125,
@@ -563,7 +541,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Game Info Dashboard Column
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,7 +566,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
                         ),
                       ),
                       const SizedBox(height: 4),
-                      // Dynamic Landmark Key Guide
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -621,9 +597,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
             ),
           ),
           const SizedBox(height: 10),
-          // -------------------------------------------------------------------
-          // MAIN PLAYING AREA: Completely Unobstructed 2.5D Game Viewport
-          // -------------------------------------------------------------------
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
@@ -641,7 +614,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
             ),
           ),
           const SizedBox(height: 12),
-          // 4-Button Action Controls Row
           _buildFourButtonRow(),
           const SizedBox(height: 8),
           pressStatsBar(_stats, dark: true),
@@ -661,8 +633,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
         return Row(
           children: List.generate(4, (index) {
             final cell = _laneCells[index];
-            final isPressed =
-                input.isDown(cell) || _touchDownLanes.contains(index);
+            final isPressed = input.isDown(cell) || _touchDownLanes.contains(index);
             final color = _dirColors[index];
 
             double fillRatio = 0.0;
@@ -670,7 +641,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
             Color labelColor = Colors.white;
             Color borderColor = color;
             double borderWidth = 3.0;
-            Color fillColor = color.withOpacity(0.45);
+            Color fillColor = color.withValues(alpha: 0.45);
 
             if (_lanePressStart.containsKey(index)) {
               final held = _t - _lanePressStart[index]!;
@@ -683,12 +654,12 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
                 labelColor = kFullColor;
                 borderColor = kFullColor;
                 borderWidth = 5.0;
-                fillColor = kFullColor.withOpacity(0.4);
+                fillColor = kFullColor.withValues(alpha: 0.4);
               } else if (result == PressResult.half) {
                 labelColor = kHalfColor;
                 borderColor = kHalfColor;
                 borderWidth = 4.0;
-                fillColor = kHalfColor.withOpacity(0.4);
+                fillColor = kHalfColor.withValues(alpha: 0.4);
               }
             } else if (isPressed) {
               fillRatio = 1.0;
@@ -704,11 +675,11 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
                   },
                   onPointerUp: (_) {
                     setState(() => _touchDownLanes.remove(index));
-                    _onUp(cell, 0);
+                    _onUp(cell);
                   },
                   onPointerCancel: (_) {
                     setState(() => _touchDownLanes.remove(index));
-                    _onUp(cell, 0);
+                    _onUp(cell);
                   },
                   child: Container(
                     height: 76,
@@ -719,7 +690,7 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
                       boxShadow: isPressed || _lanePressStart.containsKey(index)
                           ? [
                               BoxShadow(
-                                color: borderColor.withOpacity(0.65),
+                                color: borderColor.withValues(alpha: 0.65),
                                 blurRadius: 12,
                                 spreadRadius: 2,
                               )
@@ -817,9 +788,6 @@ class _TreasureHunt2D5ScreenState extends State<TreasureHunt2D5Screen>
   }
 }
 
-// =============================================================================
-// 2.5D Pseudo-3D Tilemap Painter
-// =============================================================================
 class _TileMap2D5Painter extends CustomPainter {
   final List<List<TileType>> mapGrid;
   final int playerX;
@@ -924,7 +892,7 @@ class _TileMap2D5Painter extends CustomPainter {
             ..lineTo(baseRect.right + 2, baseRect.bottom + 8)
             ..lineTo(baseRect.left - 2, baseRect.bottom + 4)
             ..close();
-          canvas.drawPath(shadowPath, Paint()..color = Colors.black.withOpacity(0.28));
+          canvas.drawPath(shadowPath, Paint()..color = Colors.black.withValues(alpha: 0.28));
         }
 
         if (h > 0) {
@@ -1000,7 +968,7 @@ class _TileMap2D5Painter extends CustomPainter {
       c,
       tileW * 0.6 * glowPulse,
       Paint()
-        ..color = Colors.amberAccent.withOpacity(0.35 * glowPulse)
+        ..color = Colors.amberAccent.withValues(alpha: 0.35 * glowPulse)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
 
@@ -1012,7 +980,7 @@ class _TileMap2D5Painter extends CustomPainter {
       canvas.drawCircle(
         Offset(sparkleX, sparkleY),
         1.8,
-        Paint()..color = Colors.yellowAccent.withOpacity(sparkleAlpha),
+        Paint()..color = Colors.yellowAccent.withValues(alpha: sparkleAlpha),
       );
     }
 
@@ -1054,7 +1022,7 @@ class _TileMap2D5Painter extends CustomPainter {
         ..close();
       canvas.drawPath(
         innerGlowPath,
-        Paint()..color = Colors.amber.withOpacity(0.8),
+        Paint()..color = Colors.amber.withValues(alpha: 0.8),
       );
     }
 
@@ -1076,9 +1044,6 @@ class _TileMap2D5Painter extends CustomPainter {
   bool shouldRepaint(covariant _TileMap2D5Painter old) => true;
 }
 
-// =============================================================================
-// Top Minimap Painter with Compass Directions
-// =============================================================================
 class _MinimapPainter extends CustomPainter {
   final List<List<TileType>> mapGrid;
   final int playerX;
@@ -1107,21 +1072,12 @@ class _MinimapPainter extends CustomPainter {
 
     for (int y = 0; y < rows; y++) {
       for (int x = 0; x < cols; x++) {
-        Color c;
-        switch (mapGrid[y][x]) {
-          case TileType.water:
-            c = const Color(0xFF1E88E5);
-            break;
-          case TileType.path:
-            c = const Color(0xFF8D6E63);
-            break;
-          case TileType.tree:
-            c = const Color(0xFF1B5E20);
-            break;
-          default:
-            c = const Color(0xFF1B3B1A);
-            break;
-        }
+        Color c = switch (mapGrid[y][x]) {
+          TileType.water => const Color(0xFF1E88E5),
+          TileType.path => const Color(0xFF8D6E63),
+          TileType.tree => const Color(0xFF1B5E20),
+          _ => const Color(0xFF1B3B1A),
+        };
         canvas.drawRect(
           Rect.fromLTWH(x * cellW, y * cellH, cellW, cellH),
           Paint()..color = c,
@@ -1147,7 +1103,7 @@ class _MinimapPainter extends CustomPainter {
 
     final pPos = Offset((playerX + 0.5) * cellW, (playerY + 0.5) * cellH);
     canvas.drawCircle(pPos, cellW * 1.4, Paint()..color = Colors.cyanAccent);
-    canvas.drawCircle(pPos, cellW * 2.5 * (1.0 + (t % 1)), Paint()..color = Colors.cyanAccent.withOpacity(0.3));
+    canvas.drawCircle(pPos, cellW * 2.5 * (1.0 + (t % 1)), Paint()..color = Colors.cyanAccent.withValues(alpha: 0.3));
 
     _drawCompassOverlay(canvas, size);
   }
@@ -1157,7 +1113,7 @@ class _MinimapPainter extends CustomPainter {
     canvas.drawCircle(
       center,
       cellW * 1.8 * pulse,
-      Paint()..color = Colors.amber.withOpacity(0.4),
+      Paint()..color = Colors.amber.withValues(alpha: 0.4),
     );
 
     final rect = Rect.fromCenter(center: center, width: cellW * 2.2, height: cellW * 1.8);
@@ -1175,7 +1131,7 @@ class _MinimapPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
 
     final linePaint = Paint()
-      ..color = Colors.white.withOpacity(0.15)
+      ..color = Colors.white.withValues(alpha: 0.15)
       ..strokeWidth = 1.0;
     canvas.drawLine(Offset(center.dx, 14), Offset(center.dx, size.height - 14), linePaint);
     canvas.drawLine(Offset(14, center.dy), Offset(size.width - 14, center.dy), linePaint);
