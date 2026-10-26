@@ -10,7 +10,7 @@ import 'progress_screen.dart';
 import 'burger_catch_screen.dart';
 import 'two_tile_game_rhythm.dart';
 import 'cutting_game.dart';
-import 'cooking_studio_screen.dart';
+import 'cooking_studio_screen_new.dart';
 import 'sky_burger.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -159,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       'delicious dishes by holding the left, right, or both tiles. '
                       'Practise alternating hands, sustained holds, and two-hand coordination.',
                   buttonLabel: 'Start Cooking',
-                  onPressed: () => _go(const CookingStudioScreen()),
+                  onPressed: () => _go(const CookingStudioScreenNew()),
                 ),
                 ActionCard(
                   icon: Icons.flash_on_rounded,
