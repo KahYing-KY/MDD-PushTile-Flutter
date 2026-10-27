@@ -4,6 +4,7 @@ import 'push_input.dart';
 import 'training_session.dart';
 import 'training_history_service.dart';
 import 'demo_data.dart';
+import 'hall_sensor_panel.dart';
 
 class ProgressScreen extends StatefulWidget {
   const ProgressScreen({super.key});
@@ -186,6 +187,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
                   _viewToggle(),
                   const SizedBox(height: 12),
                   _filterBar(),
+                  const SizedBox(height: 16),
+                  const HallSensorPanel(),
                   const SizedBox(height: 16),
                   if (byActivity.isEmpty)
                     _emptyCard(all.isEmpty)
