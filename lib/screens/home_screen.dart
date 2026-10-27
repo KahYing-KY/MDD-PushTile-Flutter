@@ -9,6 +9,7 @@ import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';
 import 'treasure_hunt.dart';
 import 'dart:async';
+import 'treasure_hunt_interim.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -236,6 +237,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         buttonLabel: 'Play Treasure Hunt',
                         onPressed: () =>
                             _go(const TreasureHunt2D5Screen()),
+                      ),
+
+                      ActionCard(
+                        icon: Icons.touch_app_rounded,
+                        color: kTeal,
+                        title: 'Treasure Hunt (Interim)',
+                        description:
+                            'One-tile prototype. Each detected magnet press '
+                            'moves the player two tiles automatically '
+                            'towards the treasure.',
+                        buttonLabel: 'Play Interim Treasure Hunt',
+                        onPressed: () =>
+                            _go(const TreasureHuntInterimScreen()),
                       ),
 
                       ActionCard(
