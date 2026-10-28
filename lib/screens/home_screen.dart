@@ -10,6 +10,7 @@ import 'sky_burger_real.dart';
 import 'treasure_hunt.dart';
 import 'dart:async';
 import 'treasure_hunt_interim.dart';
+import 'chatbot_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -372,11 +373,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
-            ),
-          ),
+            
         ),
       ),
-    );
+    ),
+  ),
+
+  // NEW CHATBOT BUTTON
+  floatingActionButton: FloatingActionButton.extended(
+    backgroundColor: kTeal,
+    foregroundColor: Colors.white,
+    icon: const Icon(Icons.chat_bubble_outline),
+    label: const Text('Need help?'),
+    onPressed: () {
+      _stopScrolling();
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const ChatbotScreen(),
+        ),
+      );
+    },
+  ),
+);
   }
 }
 
