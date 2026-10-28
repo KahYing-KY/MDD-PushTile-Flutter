@@ -21,3 +21,9 @@
 {"timestamp": "2026-10-28T11:55:27.699+08:00", "sensor": "hall1", "detected": true}
 {"timestamp": "2026-10-28T11:57:23.084+08:00", "sensor": "hall1", "detected": false}
 {"timestamp": "2026-10-28T11:57:24.115+08:00", "sensor": "hall1", "detected": true}
+{"timestamp": "2026-10-28T13:36:26.044+08:00", "sensor": "hall1", "detected": false}
+{"timestamp": "2026-10-28T13:36:27.077+08:00", "sensor": "hall1", "detected": true}
+{"timestamp": "2026-10-28T13:36:29.952+08:00", "sensor": "hall1", "detected": false}
+{"timestamp": "2026-10-28T13:36:30.982+08:00", "sensor": "hall1", "detected": true}
+{"timestamp": "2026-10-28T13:36:34.252+08:00", "sensor": "hall1", "detected": false}
+{"timestamp": "2026-10-28T13:36:35.282+08:00", "sensor": "hall1", "detected": true}
