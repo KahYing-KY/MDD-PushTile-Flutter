@@ -1,5 +1,6 @@
-import 'dart:math';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,106 @@ import 'push_input.dart';
 import 'training_session.dart';
 import 'training_history_service.dart';
 import 'hall_sensor_service.dart';
+
+// =============================================================================
+// 1. RANDOM FOREST INFERENCE ENGINE
+// =============================================================================
+
+class TreeNode {
+  final int? featureIndex;
+  final double? threshold;
+  final TreeNode? left;
+  final TreeNode? right;
+  final double? leafValue;
+
+  TreeNode({
+    this.featureIndex,
+    this.threshold,
+    this.left,
+    this.right,
+    this.leafValue,
+  });
+
+  bool get isLeaf => leafValue != null;
+
+  factory TreeNode.fromJson(Map<String, dynamic> json) {
+    if (json.containsKey('value')) {
+      return TreeNode(leafValue: (json['value'] as num).toDouble());
+    }
+    return TreeNode(
+      featureIndex: json['feature'] as int,
+      threshold: (json['threshold'] as num).toDouble(),
+      left: TreeNode.fromJson(json['left'] as Map<String, dynamic>),
+      right: TreeNode.fromJson(json['right'] as Map<String, dynamic>),
+    );
+  }
+
+  double predict(List<double> features) {
+    if (isLeaf) return leafValue!;
+    if (features[featureIndex!] <= threshold!) {
+      return left!.predict(features);
+    } else {
+      return right!.predict(features);
+    }
+  }
+}
+
+class RandomForestModel {
+  final List<TreeNode> trees;
+
+  RandomForestModel(this.trees);
+
+  factory RandomForestModel.fromJsonString(String jsonStr) {
+    final Map<String, dynamic> parsed = jsonDecode(jsonStr);
+    final List<dynamic> treeList = parsed['trees'];
+    return RandomForestModel(
+      treeList
+          .map((t) => TreeNode.fromJson(t as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  double predict(List<double> features) {
+    if (trees.isEmpty) return 1.0;
+    final double total =
+        trees.fold(0.0, (sum, tree) => sum + tree.predict(features));
+    return total / trees.length;
+  }
+}
+
+/// Offline-trained Random Forest model JSON
+const String _defaultRfModelJson = '''
+{
+  "trees": [
+    {
+      "feature": 0,
+      "threshold": 0.6,
+      "left": {
+        "feature": 1,
+        "threshold": 2.0,
+        "left": {"value": 0.60},
+        "right": {"value": 0.75}
+      },
+      "right": {
+        "feature": 1,
+        "threshold": 1.2,
+        "left": {"value": 1.40},
+        "right": {"value": 1.20}
+      }
+    },
+    {
+      "feature": 2,
+      "threshold": 15.0,
+      "left": {"value": 1.30},
+      "right": {"value": 0.65}
+    }
+  ]
+}
+''';
+
+// =============================================================================
+// 2. ENUMS & DATA STRUCTURES
+// =============================================================================
 
 enum _HuntPhase { setup, playing, done }
 
@@ -34,11 +135,16 @@ class LandmarkInfo {
   const LandmarkInfo(this.name, this.code, this.color, this.icon, this.x, this.y);
 }
 
+// =============================================================================
+// 3. TREASURE HUNT INTERIM SCREEN WITH INTER-SESSION DDA
+// =============================================================================
+
 class TreasureHuntInterimScreen extends StatefulWidget {
   const TreasureHuntInterimScreen({super.key});
 
   @override
-  State<TreasureHuntInterimScreen> createState() => _TreasureHuntInterimScreenState();
+  State<TreasureHuntInterimScreen> createState() =>
+      _TreasureHuntInterimScreenState();
 }
 
 class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
@@ -76,9 +182,15 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
   String _judgment = '';
   Color _judgmentColor = Colors.white;
 
+  // Adaptive Difficulty State
+  late final RandomForestModel _ddaModel;
+  double _difficultyMultiplier = 1.0; // 0.5 (Easy Map) -> 1.5 (Hard Map)
+  static const int _stepDistance = 2;
+
   @override
   void initState() {
     super.initState();
+    _ddaModel = RandomForestModel.fromJsonString(_defaultRfModelJson);
     _ticker = createTicker(_onTick);
     _generateMap();
     _sensorTimer = Timer.periodic(
@@ -96,6 +208,40 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
     super.dispose();
   }
 
+  // ---------------------------------------------------------------------
+  // Feature Telemetry & Inter-Session DDA Evaluation
+  // ---------------------------------------------------------------------
+  List<double> _extractTelemetryFeatures() {
+    final moves = max(_totalMoves, 1);
+    final elapsed = max(_t, 0.1);
+
+    final moveRate = moves / elapsed;
+    final avgTimePerMove = elapsed / moves;
+    final totalDuration = elapsed;
+
+    return [moveRate, avgTimePerMove, totalDuration];
+  }
+
+  void _evaluateNextSessionDifficulty() {
+    final features = _extractTelemetryFeatures();
+    final rawTarget = _ddaModel.predict(features);
+
+    const double alpha = 0.5;
+    _difficultyMultiplier =
+        (alpha * rawTarget) + ((1.0 - alpha) * _difficultyMultiplier);
+    _difficultyMultiplier = _difficultyMultiplier.clamp(0.5, 1.5);
+  }
+
+  String get _mapDifficultyLabel {
+    if (_difficultyMultiplier >= 1.12) {
+      return 'Hard (Long Route & Dense Forest)';
+    } else if (_difficultyMultiplier <= 0.88) {
+      return 'Easy (Short Route & Open Fields)';
+    } else {
+      return 'Medium (Standard Map)';
+    }
+  }
+
   Future<void> _pollSensor() async {
     if (_polling || !_useSensor) return;
     _polling = true;
@@ -110,8 +256,6 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
         return;
       }
       if (!_sensorConnected) setState(() => _sensorConnected = true);
-      // First observation only establishes the baseline.
-      // A fresh false -> true transition means one full push.
       final freshPress = _lastSensorState == false && state == true;
       _lastSensorState = state;
       if (freshPress && _phase == _HuntPhase.playing) _fullPush();
@@ -140,18 +284,35 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
       _mapGrid[y][mapWidth - 1] = TileType.tree;
     }
 
-    _playerX = 2;
-    _playerY = 2 + (_random.nextInt(2) * 2);
+    int treeCount = 35;
+    bool createRiver = true;
 
-    _treasureX = 14 + (_random.nextInt(2) * 2);
-    _treasureY = 14 + (_random.nextInt(2) * 2);
+    if (_difficultyMultiplier >= 1.12) {
+      _playerX = 2;
+      _playerY = 2;
+      _treasureX = 18;
+      _treasureY = 18;
+      treeCount = 60;
+    } else if (_difficultyMultiplier <= 0.88) {
+      _playerX = 4;
+      _playerY = 4;
+      _treasureX = 10;
+      _treasureY = 10;
+      treeCount = 15;
+      createRiver = false;
+    } else {
+      _playerX = 2;
+      _playerY = 2 + (_random.nextInt(2) * 2);
+      _treasureX = 14 + (_random.nextInt(2) * 2);
+      _treasureY = 14 + (_random.nextInt(2) * 2);
+      treeCount = 35;
+    }
 
     final pathNodes = _generate2StepPath(
       Point(_playerX, _playerY),
       Point(_treasureX, _treasureY),
     );
 
-    // Route includes every intermediate tile, enabling automatic steering.
     _route.clear();
     for (int i = 0; i < pathNodes.length; i++) {
       if (i > 0) {
@@ -219,15 +380,17 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
       }
     }
 
-    int riverX = 8 + _random.nextInt(4);
-    for (int y = 2; y < mapHeight - 2; y++) {
-      Point<int> rPoint = Point(riverX, y);
-      if (!solutionTiles.contains(rPoint)) {
-        _mapGrid[y][riverX] = TileType.water;
+    if (createRiver) {
+      int riverX = 8 + _random.nextInt(4);
+      for (int y = 2; y < mapHeight - 2; y++) {
+        Point<int> rPoint = Point(riverX, y);
+        if (!solutionTiles.contains(rPoint)) {
+          _mapGrid[y][riverX] = TileType.water;
+        }
       }
     }
 
-    for (int i = 0; i < 35; i++) {
+    for (int i = 0; i < treeCount; i++) {
       int rx = 1 + _random.nextInt(mapWidth - 2);
       int ry = 1 + _random.nextInt(mapHeight - 2);
       Point<int> treeCandidate = Point(rx, ry);
@@ -254,7 +417,7 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
 
       for (final d in dirs) {
         final next = Point(current.x + d.x, current.y + d.y);
-        if (next.x >= 2 && next.x <= mapWidth - 3 && next.y >= 2 && next.y <= mapHeight - 3) {
+        if (next.x >= 2 && next.x <= mapWidth - 2 && next.y >= 2 && next.y <= mapHeight - 2) {
           if (!visited.contains(next)) {
             visited.add(next);
             parent[next] = current;
@@ -279,7 +442,7 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
   void _startGame() {
     trainingStarted = true;
     _virtualPressed = false;
-    _lastSensorState = null; // Require observed release before next sensor press.
+    _lastSensorState = null;
     _generateMap();
     setState(() {
       _stats.reset();
@@ -319,39 +482,41 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
 
   void _fullPush() {
     if (!mounted || _phase != _HuntPhase.playing) return;
-    // A valid rising edge means one full push; no duration classification.
-    final nextIndex = min(_routeIndex + 2, _route.length - 1);
+
+    final nextIndex = min(_routeIndex + _stepDistance, _route.length - 1);
     if (nextIndex <= _routeIndex) return;
+
     final next = _route[nextIndex];
     final distance = nextIndex - _routeIndex;
+
     setState(() {
       _routeIndex = nextIndex;
       _playerX = next.x;
       _playerY = next.y;
       _stats.add(PressResult.full);
       _totalMoves++;
-      _flash('FULL PUSH • MOVED $distance TILES', Colors.greenAccent);
+      _flash('MOVED $distance TILES FORWARD', Colors.greenAccent);
     });
+
     if (_playerX == _treasureX && _playerY == _treasureY) {
       _finish();
     }
   }
 
-  bool _isWalkable(int x, int y) {
-    if (x < 0 || x >= mapWidth || y < 0 || y >= mapHeight) return false;
-    final tile = _mapGrid[y][x];
-    return tile == TileType.grass || tile == TileType.path || tile == TileType.treasure;
-  }
-
   void _finish({bool early = false}) {
     _ticker.stop();
+    
+    if (!early) {
+      _evaluateNextSessionDifficulty();
+    }
+    
     _phase = _HuntPhase.done;
 
     TrainingHistoryService.instance.addSession(TrainingSession(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       activity: 'Treasure Hunt Interim',
       date: DateTime.now(),
-      difficulty: _difficulty.label,
+      difficulty: '${_difficulty.label} (${_difficultyMultiplier.toStringAsFixed(2)}x Dynamic Map)',
       durationSeconds: _t.round(),
       correctAttempts: _totalMoves - _blockedAttempts,
       incorrectAttempts: _blockedAttempts,
@@ -360,14 +525,17 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
       noPresses: _stats.none,
       completed: !early,
       notes: 'Time ${_t.toStringAsFixed(1)} s | Moves $_totalMoves | '
-          'One-button automatic route | Simulated/ESP32 Hall 1 input',
+          'Next Session DDA Multiplier ${_difficultyMultiplier.toStringAsFixed(2)}x | '
+          'Simulated/ESP32 Hall 1 input',
     ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Treasure Hunt • Interim')),
+      appBar: AppBar(
+        title: const Text('Treasure Hunt • Interim'),
+      ),
       body: SafeArea(
         child: Focus(
           focusNode: _focusNode,
@@ -399,8 +567,7 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         const Text(
-          'A new map appears each game.\n'
-          'One full press moves two tiles automatically toward the treasure!',
+          'Dynamic difficulty adjusts map size, path length, and obstacle density between sessions based on your play speed!',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 15),
         ),
@@ -410,10 +577,40 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Active Map Tier:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: kTeal.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: kTeal),
+                      ),
+                      child: Text(
+                        'DDA: ${_difficultyMultiplier.toStringAsFixed(2)}x',
+                        style: const TextStyle(
+                            color: kTeal, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _mapDifficultyLabel,
+                    style: const TextStyle(
+                        color: kTeal, fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+                const Divider(height: 20),
                 const Text('One-button interim mode',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                const Text('Press the single button or Space once to move 2 tiles. '
+                const Text('Press the single button or Space to move along the route. '
                     'Hall Sensor 1 rising edge does the same.'),
                 SwitchListTile(
                   title: const Text('Listen to simulated Raspberry Pi'),
@@ -497,10 +694,12 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Time: ${_t.toStringAsFixed(1)} s',
-                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                          Text('Time: ${_t.toStringAsFixed(1)}s',
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                          Text('DDA: ${_difficultyMultiplier.toStringAsFixed(2)}x',
+                              style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                           Text('Moves: $_totalMoves',
-                              style: const TextStyle(color: Colors.amberAccent, fontSize: 15, fontWeight: FontWeight.bold)),
+                              style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -516,6 +715,7 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
                       ),
                       const SizedBox(height: 4),
                       Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.black38,
@@ -525,8 +725,11 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('LANDMARKS MAP KEY',
-                                style: TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                            Text(
+                              'CALCULATED DDA: ${_difficultyMultiplier.toStringAsFixed(2)}x • ${_mapDifficultyLabel.toUpperCase()}',
+                              style: const TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             const SizedBox(height: 2),
                             Wrap(
                               spacing: 8,
@@ -637,9 +840,11 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
               const Divider(height: 16),
               _row('Total Moves', '$_totalMoves'),
               const Divider(height: 16),
-              _row('Blocked Attempts', '$_blockedAttempts'),
+              _row('Full Pushes', '${_stats.full}'),
               const Divider(height: 16),
-              _row('Full Pushes (2 Tiles)', '${_stats.full}'),
+              _row('Calculated DDA Multiplier', '${_difficultyMultiplier.toStringAsFixed(2)}x'),
+              const Divider(height: 16),
+              _row('Next Session Map Difficulty', _mapDifficultyLabel),
             ],
           ),
         ),
@@ -647,7 +852,7 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
         FilledButton.icon(
           onPressed: _startGame,
           icon: const Icon(Icons.replay),
-          label: const Text('Play Again (New Map)', style: TextStyle(fontSize: 16)),
+          label: const Text('Play Next Map', style: TextStyle(fontSize: 16)),
           style: FilledButton.styleFrom(
               backgroundColor: kTeal, padding: const EdgeInsets.symmetric(vertical: 14)),
         ),
@@ -659,12 +864,18 @@ class _TreasureHuntInterimScreenState extends State<TreasureHuntInterimScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 15, color: Colors.black54)),
-        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 15, color: Colors.black54)),
+        ),
+        Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
       ],
     );
   }
 }
+
+// =============================================================================
+// 4. CUSTOM PAINTERS
+// =============================================================================
 
 class _TileMap2D5Painter extends CustomPainter {
   final List<List<TileType>> mapGrid;

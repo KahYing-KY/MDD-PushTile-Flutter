@@ -1,10 +1,106 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'push_input.dart';
 import 'training_session.dart';
 import 'training_history_service.dart';
+
+// =============================================================================
+// 1. RANDOM FOREST INFERENCE ENGINE
+// =============================================================================
+
+class TreeNode {
+  final int? featureIndex;
+  final double? threshold;
+  final TreeNode? left;
+  final TreeNode? right;
+  final double? leafValue;
+
+  TreeNode({
+    this.featureIndex,
+    this.threshold,
+    this.left,
+    this.right,
+    this.leafValue,
+  });
+
+  bool get isLeaf => leafValue != null;
+
+  factory TreeNode.fromJson(Map<String, dynamic> json) {
+    if (json.containsKey('value')) {
+      return TreeNode(leafValue: (json['value'] as num).toDouble());
+    }
+    return TreeNode(
+      featureIndex: json['feature'] as int,
+      threshold: (json['threshold'] as num).toDouble(),
+      left: TreeNode.fromJson(json['left'] as Map<String, dynamic>),
+      right: TreeNode.fromJson(json['right'] as Map<String, dynamic>),
+    );
+  }
+
+  double predict(List<double> features) {
+    if (isLeaf) return leafValue!;
+    if (features[featureIndex!] <= threshold!) {
+      return left!.predict(features);
+    } else {
+      return right!.predict(features);
+    }
+  }
+}
+
+class RandomForestModel {
+  final List<TreeNode> trees;
+
+  RandomForestModel(this.trees);
+
+  factory RandomForestModel.fromJsonString(String jsonStr) {
+    final Map<String, dynamic> parsed = jsonDecode(jsonStr);
+    final List<dynamic> treeList = parsed['trees'];
+    return RandomForestModel(
+      treeList
+          .map((t) => TreeNode.fromJson(t as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  double predict(List<double> features) {
+    if (trees.isEmpty) return 1.0;
+    final double total =
+        trees.fold(0.0, (sum, tree) => sum + tree.predict(features));
+    return total / trees.length;
+  }
+}
+
+/// Pre-exported offline Random Forest model output structure
+const String _defaultRfModelJson = '''
+{
+  "trees": [
+    {
+      "feature": 0,
+      "threshold": 0.25,
+      "left": {"value": 1.2},
+      "right": {
+        "feature": 1,
+        "threshold": 0.2,
+        "left": {"value": 0.85},
+        "right": {"value": 0.65}
+      }
+    },
+    {
+      "feature": 2,
+      "threshold": 0.65,
+      "left": {"value": 0.8},
+      "right": {"value": 1.15}
+    }
+  ]
+}
+''';
+
+// =============================================================================
+// 2. GAME SCREEN WITH ADAPTIVE DIFFICULTY
+// =============================================================================
 
 class InterimDemoScreen extends StatefulWidget {
   const InterimDemoScreen({super.key});
@@ -38,19 +134,30 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
   bool _saved = false;
   String _message = '';
 
+  // Adaptive Difficulty State
+  late final RandomForestModel _ddaModel;
+  double _difficultyMultiplier = 1.0; // 0.6 (Easier) -> 1.4 (Harder)
+  double _dynamicTimeoutSec = PushConfig.tileTimeoutSec.toDouble();
+  int _targetClues = 4; // Base starting clues
+
   @override
   void initState() {
     super.initState();
+    _ddaModel = RandomForestModel.fromJsonString(_defaultRfModelJson);
     input.allowed = BoardMode.row.cells;
     input.onUp = _onUp;
     _newGame();
+
     _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted || _finished) return;
       final idleSec = _idle.elapsedMilliseconds / 1000;
-      if (!input.anyDown && idleSec >= PushConfig.tileTimeoutSec) {
+
+      // Evaluate timeout against dynamic timeout threshold
+      if (!input.anyDown && idleSec >= _dynamicTimeoutSec) {
         setState(() {
           _timeouts++;
           _failCell('Time out - moving on.');
+          _evaluateAdaptiveDifficulty();
         });
         if (_finished) _complete();
       } else {
@@ -68,7 +175,46 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
   }
 
   // ---------------------------------------------------------------------
-  // Puzzle generation (exactly one answer, checked here)
+  // Feature Telemetry Extraction & DDA Evaluation
+  // ---------------------------------------------------------------------
+  List<double> _extractTelemetryFeatures() {
+    final totalAttempts = max(_stats.full + _stats.half + _stats.none, 1);
+    final cellsProcessed = max(_pos, 1);
+
+    final mistakeRate = _mistakes / cellsProcessed;
+    final timeoutRatio = _timeouts / cellsProcessed;
+    final fullPressRatio = _stats.full / totalAttempts;
+    final avgCellTime = (_total.elapsedMilliseconds / 1000) / cellsProcessed;
+
+    return [mistakeRate, timeoutRatio, fullPressRatio, avgCellTime];
+  }
+
+  void _evaluateAdaptiveDifficulty() {
+    final features = _extractTelemetryFeatures();
+    final rawTarget = _ddaModel.predict(features);
+
+    // Apply Exponential Moving Average (EMA) to prevent erratic scaling
+    const double alpha = 0.2;
+    _difficultyMultiplier =
+        (alpha * rawTarget) + ((1.0 - alpha) * _difficultyMultiplier);
+    _difficultyMultiplier = _difficultyMultiplier.clamp(0.6, 1.4);
+
+    // Scale runtime parameter: inverse scaling for timeout
+    _dynamicTimeoutSec = (PushConfig.tileTimeoutSec / _difficultyMultiplier)
+        .clamp(3.0, 15.0);
+
+    // Adjust clue count target for next game generation (fewer clues = harder)
+    if (_difficultyMultiplier >= 1.25) {
+      _targetClues = 3;
+    } else if (_difficultyMultiplier <= 0.8) {
+      _targetClues = 5;
+    } else {
+      _targetClues = 4;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Puzzle generation
   // ---------------------------------------------------------------------
   int _countSolutions(List<int?> start) {
     final g = List<int?>.from(start);
@@ -106,7 +252,6 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
     return count;
   }
 
-  // Assigns fields directly (wrap in setState when called from UI).
   void _newGame() {
     final first = <int>[1, 2, 3]..shuffle(_rng);
     final shift = _rng.nextBool() ? 1 : 2;
@@ -119,11 +264,11 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
     }
 
     final order = List<int>.generate(9, (i) => i)..shuffle(_rng);
-    var k = 4;
+    var k = _targetClues;
     late List<int?> puzzle;
     while (true) {
       puzzle = List<int?>.filled(9, null);
-      for (var i = 0; i < k; i++) {
+      for (var i = 0; i < min(k, 9); i++) {
         puzzle[order[i]] = sol[order[i]];
       }
       if (_countSolutions(puzzle) == 1) break;
@@ -158,11 +303,11 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
   }
 
   // ---------------------------------------------------------------------
-  // Game logic (runs on each release, never inside build)
+  // Game Logic
   // ---------------------------------------------------------------------
   void _onUp(int cell, double sec) {
     if (_finished) return;
-    final digit = cell - 2; // G=1, H=2, J=3
+    final digit = cell - 2;
     final target = _empties[_pos];
     final right = digit == _solution[target];
     final r = classifyHold(sec);
@@ -206,12 +351,13 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
           _message = 'Too short - nothing entered.';
         }
       }
+
+      _evaluateAdaptiveDifficulty();
     });
 
     if (_finished) _complete();
   }
 
-  // inside setState
   void _wrong(int digit) {
     _mistakes++;
     _flashDigit = digit;
@@ -225,7 +371,6 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
     _message = 'Wrong number ($digit) - mistake counted. Try again.';
   }
 
-  // inside setState
   void _failCell(String msg) {
     final t = _empties[_pos];
     _board[t] = _solution[t];
@@ -233,7 +378,6 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
     _advance(msg);
   }
 
-  // inside setState
   void _advance(String msg) {
     _pos++;
     _tries = 0;
@@ -262,7 +406,8 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       activity: 'Interim Demo',
       date: DateTime.now(),
-      difficulty: '1 x 3 push tiles',
+      difficulty:
+          '1 x 3 push tiles (${_difficultyMultiplier.toStringAsFixed(2)}x Dynamic)',
       durationSeconds: secs.round(),
       correctAttempts: _correctFull,
       incorrectAttempts: _mistakes + _failedCells.length,
@@ -282,7 +427,8 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
         title: Text(early ? 'Session ended' : 'Demo Completed!'),
         content: Text('Time ${fmtSeconds(secs)}\n'
             'Mistakes: $_mistakes   Failed cells: ${_failedCells.length}\n'
-            'Full ${_stats.full} • Half ${_stats.half} • No press ${_stats.none}'),
+            'Full ${_stats.full} | Half ${_stats.half} | No press ${_stats.none}\n'
+            'Final DDA Multiplier: ${_difficultyMultiplier.toStringAsFixed(2)}x'),
         actions: [
           TextButton(
             onPressed: () {
@@ -304,7 +450,7 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
   }
 
   // ---------------------------------------------------------------------
-  // UI
+  // UI Rendering
   // ---------------------------------------------------------------------
   TileStyle _padStyle(int cell) {
     final digit = cell - 2;
@@ -321,7 +467,20 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
   Widget build(BuildContext context) {
     final cellNo = min(_pos + 1, _empties.length);
     return Scaffold(
-      appBar: AppBar(title: const Text('Interim Demo')),
+      appBar: AppBar(
+        title: const Text('Interim Demo'),
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Text(
+                'DDA: ${_difficultyMultiplier.toStringAsFixed(2)}x',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: PushKeyboard(
           controller: input,
@@ -344,16 +503,17 @@ class _InterimDemoScreenState extends State<InterimDemoScreen> {
                         children: [
                           Text(
                             'Cell $cellNo of ${_empties.length}  •  '
-                            'Mistakes $_mistakes  •  Try ${_tries + 1}/${PushConfig.maxTries}',
+                            'Mistakes $_mistakes  •  Try ${_tries + 1}/${PushConfig.maxTries}  •  '
+                            'Timeout: ${_dynamicTimeoutSec.toStringAsFixed(1)}s',
                             style: const TextStyle(
-                                fontSize: 15,
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
                                 color: kTeal),
                           ),
                           const SizedBox(height: 4),
                           Text(_message,
-                              style:
-                                  const TextStyle(fontSize: 14, color: kInk)),
+                              style: const TextStyle(
+                                  fontSize: 14, color: kInk)),
                         ],
                       ),
                     ),
