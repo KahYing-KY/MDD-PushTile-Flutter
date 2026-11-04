@@ -11,18 +11,26 @@ import 'training_history_service.dart';
 // MRC Scale Definition for Stroke Muscle Evaluation (Grades 1 to 5)
 // ===========================================================================
 enum MrcLevel {
-  mrc1(1, 'MRC 1', 'Trace Contraction', 'Slow drop speed, short holds, simple single notes'),
-  mrc2(2, 'MRC 2', 'Gravity Eliminated', 'Gentle speed, moderate holds, standard sequence'),
-  mrc3(3, 'MRC 3', 'Against Gravity', 'Moderate speed, longer holds, mixed patterns'),
-  mrc4(4, 'MRC 4', 'Moderate Resistance', 'Fast drop speed, long holds, high note density'),
-  mrc5(5, 'MRC 5', 'Normal Strength', 'Very fast speed, maximum endurance, complex dual-lane chords');
+  mrc3(3, 'MRC 3', 'Against Gravity',
+      'Moderate speed, longer holds, mixed patterns'),
+
+  mrc4(4, 'MRC 4', 'Against Resistance',
+      'Fast drop speed, long holds, high note density'),
+
+  mrc5(5, 'MRC 5', 'Normal Strength',
+      'Very fast speed, maximum endurance, complex dual-lane chords');
 
   final int level;
   final String label;
   final String description;
   final String details;
 
-  const MrcLevel(this.level, this.label, this.description, this.details);
+  const MrcLevel(
+    this.level,
+    this.label,
+    this.description,
+    this.details,
+  );
 }
 
 // ===========================================================================
@@ -222,8 +230,12 @@ class RandomForestClassifier {
       delta = -1;
     }
 
-    int nextLevelInt = (features.currentMrcLevel + delta).clamp(1, 5);
-    MrcLevel recommendedLevel = MrcLevel.values[nextLevelInt - 1];
+    int nextLevelInt =
+      (features.currentMrcLevel + delta).clamp(3, 5).toInt();
+
+    MrcLevel recommendedLevel = MrcLevel.values.firstWhere(
+      (level) => level.level == nextLevelInt,
+    );
 
     double proficiency = (features.completionRate * 0.35) +
         (features.fullPressRatio * 0.40) +
@@ -339,7 +351,7 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
 
   _RPhase _phase = _RPhase.setup;
   final BoardMode _mode = BoardMode.row;
-  MrcLevel _mrcLevel = MrcLevel.mrc1;
+  MrcLevel _mrcLevel = MrcLevel.mrc3;
   double _t = 0;
 
   List<int> get _laneCells => _mode.cells.length >= 4 
@@ -354,48 +366,36 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
   Color _judgmentColor = Colors.white;
 
   double get _lead => switch (_mrcLevel) {
-        MrcLevel.mrc1 => 4.2,
-        MrcLevel.mrc2 => 3.5,
         MrcLevel.mrc3 => 2.8,
         MrcLevel.mrc4 => 2.1,
         MrcLevel.mrc5 => 1.5,
       };
 
   double get _gap => switch (_mrcLevel) {
-        MrcLevel.mrc1 => 2.0,
-        MrcLevel.mrc2 => 1.6,
         MrcLevel.mrc3 => 1.2,
         MrcLevel.mrc4 => 0.8,
         MrcLevel.mrc5 => 0.5,
       };
 
   double get _halfSec => switch (_mrcLevel) {
-        MrcLevel.mrc1 => 0.8,
-        MrcLevel.mrc2 => 1.2,
         MrcLevel.mrc3 => 1.6,
         MrcLevel.mrc4 => 2.0,
         MrcLevel.mrc5 => 2.5,
       };
 
   double get _fullSec => switch (_mrcLevel) {
-        MrcLevel.mrc1 => 1.5,
-        MrcLevel.mrc2 => 2.2,
         MrcLevel.mrc3 => 3.0,
         MrcLevel.mrc4 => 4.0,
         MrcLevel.mrc5 => 5.0,
       };
 
   double get _enduranceSec => switch (_mrcLevel) {
-        MrcLevel.mrc1 => 5.0,
-        MrcLevel.mrc2 => 8.0,
         MrcLevel.mrc3 => 12.0,
         MrcLevel.mrc4 => 16.0,
         MrcLevel.mrc5 => 20.0,
       };
 
   List<String> get _pattern => switch (_mrcLevel) {
-        MrcLevel.mrc1 => const ['half', 'half', 'full', 'half'],
-        MrcLevel.mrc2 => const ['half', 'half', 'full', 'half', 'full', 'half', 'endurance'],
         MrcLevel.mrc3 => const ['half', 'full', 'half', 'full', 'full', 'endurance', 'half', 'full'],
         MrcLevel.mrc4 => const ['full', 'half', 'full', 'full', 'endurance', 'full', 'half', 'full', 'endurance', 'full'],
         MrcLevel.mrc5 => const ['full', 'chord', 'full', 'endurance', 'chord', 'full', 'half', 'chord', 'endurance', 'full'],
@@ -1135,9 +1135,8 @@ class _RhythmGameScreenState extends State<RhythmGameScreen>
         FilledButton.icon(
           onPressed: () {
             setState(() {
-              if (_lastMlResult != null) {
-                _mrcLevel = _lastMlResult!.recommendedMrcLevel;
-              }
+              // Preserve the therapist-assessed MRC grade.
+              // Game performance should not automatically change clinical strength grades.
               _phase = _RPhase.setup;
             });
           },
