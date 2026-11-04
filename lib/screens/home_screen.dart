@@ -7,10 +7,11 @@ import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';
-import 'treasure_hunt.dart';
+import 'treasure_hunt_adapt.dart';
 import 'dart:async';
 import 'treasure_hunt_interim.dart';
 import 'chatbot_screen.dart';
+import 'treasure_hunt_interim_adapt.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -248,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               'towards the treasure.',
                           buttonLabel: 'Play Interim Treasure Hunt',
                           onPressed: () =>
-                              _go(const TreasureHuntInterimScreen()),
+                              _go(const TreasureHunt2D5ScreenInterim()),
                         ),
 
                         ActionCard(
