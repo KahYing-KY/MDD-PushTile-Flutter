@@ -7,7 +7,7 @@ import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';
-import 'treasure_hunt.dart';
+import 'treasure_hunt_adapt.dart';
 import 'dart:async';
 import 'treasure_hunt_interim.dart';
 import 'chatbot_screen.dart';
