@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('RehabSudoku'),
+        title: const Text('PushPoint'),
       ),
       body: SafeArea(
         child: Center(
