@@ -11,6 +11,7 @@ import 'treasure_hunt_adapt.dart';
 import 'dart:async';
 import 'chatbot_screen.dart';
 import 'treasure_hunt_interim_adapt.dart';
+import 'treasure_hunt_interim_sensor.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -249,6 +250,18 @@ class _HomeScreenState extends State<HomeScreen> {
                           buttonLabel: 'Play Interim Treasure Hunt',
                           onPressed: () =>
                               _go(const TreasureHunt2D5ScreenInterim()),
+                        ),
+
+                        ActionCard(
+                          icon: Icons.sensors_rounded,
+                          color: kTeal,
+                          title: 'Treasure Hunt (Sensor Interim)',
+                          description:
+                              'Demonstrate Hall and FSR sensor readings. '
+                              'Half push moves 1 tile; full push moves 2 tiles.',
+                          buttonLabel: 'Start Sensor Treasure Hunt',
+                          onPressed: () =>
+                              _go(const TreasureHunt2D5ScreenInterimSensor()),
                         ),
 
                         ActionCard(
