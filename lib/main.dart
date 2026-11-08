@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/home_screen.dart';
 import 'screens/push_input.dart';
 
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
