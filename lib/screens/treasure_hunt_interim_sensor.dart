@@ -373,7 +373,14 @@ class _TreasureHunt2D5ScreenInterimSensorState extends State<TreasureHunt2D5Scre
   int? _sensorFsrRaw;
   String _sensorState = 'waiting';
   static const _sensorEndpoint = 'http://127.0.0.1:5051/api/sensors';
-
+  static const _nfcEndpoint = 'http://10.89.252.162:5051/api/nfc';
+  static const _expectedNfcUid = '43 9E 0A 97';
+  Timer? _nfcTimer;
+  bool _nfcBusy = false;
+  bool _nfcConnected = false;
+  int? _lastNfcEventId;
+  String _nfcUid = '';
+  String _nfcError = '';
 
   final RandomForestClassifier _rfClassifier = RandomForestClassifier();
   RandomForestResult? _lastMlResult;
@@ -424,18 +431,102 @@ class _TreasureHunt2D5ScreenInterimSensorState extends State<TreasureHunt2D5Scre
     input.onUp = (lane, _) => _onUp(lane);
     _ticker = createTicker(_onTick);
     _generateMap();
-    _pollSensor();
-    _sensorTimer = Timer.periodic(
-      const Duration(milliseconds: 200), (_) => _pollSensor());
+    // NFC-only communication test. Hall/FSR polling is temporarily disabled.
+    _pollNfc();
+    _nfcTimer = Timer.periodic(
+      const Duration(milliseconds: 200), (_) => _pollNfc());
   }
 
   @override
   void dispose() {
+    _nfcTimer?.cancel();
     _sensorTimer?.cancel();
     _ticker.dispose();
     input.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  // NFC-only test: one new server event advances two path tiles.
+  // A previously seen event does not cause repeated movement.
+  Future<void> _pollNfc() async {
+    if (_nfcBusy) return;
+    _nfcBusy = true;
+    try {
+      final response = await http.get(Uri.parse(_nfcEndpoint))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode != 200) {
+        throw StateError('HTTP ${response.statusCode}');
+      }
+      final data = jsonDecode(response.body);
+      if (data is! Map<String, dynamic>) {
+        throw const FormatException('Invalid NFC JSON');
+      }
+      if (!mounted) return;
+
+      final connected = data['connected'] == true;
+      final eventId = data['event_id'];
+      final uid = (data['uid'] ?? '').toString().trim().toUpperCase();
+      if (eventId is! int) {
+        throw const FormatException('Missing NFC event_id');
+      }
+
+      bool newEvent = false;
+      if (_lastNfcEventId == null || eventId < _lastNfcEventId!) {
+        // Baseline on first connection or after Python server restart.
+        _lastNfcEventId = eventId;
+      } else if (eventId > _lastNfcEventId!) {
+        newEvent = true;
+        _lastNfcEventId = eventId;
+      }
+
+      setState(() {
+        _nfcConnected = connected;
+        _nfcUid = uid;
+        _nfcError = '';
+      });
+
+      if (newEvent && connected && uid == _expectedNfcUid &&
+          _phase == _HuntPhase.playing) {
+        // Temporary input mapping, NOT validated physical full-press quality.
+        _stats.add(PressResult.full);
+        _attemptAutoMove(2, PressResult.full);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _nfcConnected = false;
+          _nfcError = e.toString();
+        });
+      }
+    } finally {
+      _nfcBusy = false;
+    }
+  }
+
+  Widget _nfcStatus() {
+    final color = _nfcConnected ? Colors.greenAccent : Colors.orangeAccent;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFF172539),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_nfcConnected ? 'PN532 CONNECTED - NFC TEST' : 'NFC SERVER OFFLINE',
+              style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Text('UID: ${_nfcUid.isEmpty ? "waiting" : _nfcUid}  |  New tag event = 2 tiles',
+              style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          if (_nfcError.isNotEmpty)
+            Text(_nfcError, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.orangeAccent, fontSize: 10)),
+        ],
+      ),
+    );
   }
 
   // Reads calibrated depth estimates and raw ADC signals. Movement is awarded
@@ -724,6 +815,8 @@ class _TreasureHunt2D5ScreenInterimSensorState extends State<TreasureHunt2D5Scre
     _sensorSawRelease = false;
     _sensorInPress = false;
     _sensorPeakDepth = 0;
+    // Baseline latest NFC event at session start to ignore old detections.
+    // The next new event during gameplay will move the character.
     _generateMap();
 
     setState(() {
@@ -908,7 +1001,7 @@ class _TreasureHunt2D5ScreenInterimSensorState extends State<TreasureHunt2D5Scre
         const SizedBox(height: 10),
         const Text(
           'Sensor Interim Mode:\n'
-          'A calibrated Hall half push moves 1 tile; a full push moves 2. '
+          'NFC test mode: each new PN532 tag event moves 2 tiles. '
           'SPACEBAR / tap remains a time-based fallback.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 15),
@@ -1099,7 +1192,7 @@ class _TreasureHunt2D5ScreenInterimSensorState extends State<TreasureHunt2D5Scre
             ),
           ),
           const SizedBox(height: 8),
-          _sensorStatus(),
+          _nfcStatus(),
           const SizedBox(height: 8),
           Expanded(
             child: ClipRRect(
@@ -1811,3 +1904,4 @@ class _MinimapPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MinimapPainter old) => true;
 }
+
