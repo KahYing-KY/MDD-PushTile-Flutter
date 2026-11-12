@@ -4,9 +4,6 @@ import 'warmup_cooldown_screen.dart';
 import 'rhythm_screen_adapt.dart';
 // import '../Unused/two_hand_play.dart';
 import 'progress_screen.dart';
-import 'cutting_game.dart';
-import 'cooking_studio_screen_new.dart';
-import '../Unused/sky_burger_real.dart';
 //import '../Unused/treasure_hunt_adapt.dart';
 import 'dart:async';
 // import 'chatbot_screen.dart';
@@ -284,42 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         //   onPressed: () =>
                         //       _go(const TwoHandPlayScreen()),
                         // ),
-
-                        ActionCard(
-                          icon: Icons.lunch_dining_rounded,
-                          color: kTeal,
-                          title: 'Sky Burger',
-                          description:
-                              'Catch the falling ingredients by pressing the tiles at the right time.',
-                          buttonLabel: 'Play Sky Burger',
-                          onPressed: () =>
-                              _go(const SkyBurger2DScreen()),
-                        ),
-
-                        ActionCard(
-                          icon: Icons.lunch_dining_rounded,
-                          color: kTeal,
-                          title: 'Kitchen Cutter',
-                          description:
-                              'Cut ingredients by pushing tiles on the board.',
-                          buttonLabel: 'Play Kitchen Cutter',
-                          onPressed: () =>
-                              _go(const FourTileKitchenCutterScreen()),
-                        ),
-
-                        ActionCard(
-                          icon: Icons.restaurant_menu_rounded,
-                          color: kTeal,
-                          title: 'Cooking Studio',
-                          description:
-                              'Become a virtual chef! Choose from 5 cuisines and prepare '
-                              'delicious dishes by holding the left, right, or both tiles. '
-                              'Practise alternating hands, sustained holds, and two-hand coordination.',
-                          buttonLabel: 'Start Cooking',
-                          onPressed: () =>
-                              _go(const CookingStudioScreenNew()),
-                        ),
-
+                        
                         ActionCard(
                           icon: Icons.flash_on_rounded,
                           color: kBlue,
