@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import 'light_chase_screen.dart';
 import 'rhythm_screen_adapt.dart';
-import 'two_hand_play.dart';
+// import '../Unused/two_hand_play.dart';
 import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
@@ -264,16 +264,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               _go(const TreasureHunt2D5ScreenInterimSensor()),
                         ),
 
-                        ActionCard(
-                          icon: Icons.back_hand_rounded,
-                          color: kBlue,
-                          title: 'Hold & Reach (Two Hands)',
-                          description:
-                              'One hand holds the anchor tile while the other reaches for the lit tile.',
-                          buttonLabel: 'Play Hold & Reach',
-                          onPressed: () =>
-                              _go(const TwoHandPlayScreen()),
-                        ),
+                        // ActionCard(
+                        //   icon: Icons.back_hand_rounded,
+                        //   color: kBlue,
+                        //   title: 'Hold & Reach (Two Hands)',
+                        //   description:
+                        //       'One hand holds the anchor tile while the other reaches for the lit tile.',
+                        //   buttonLabel: 'Play Hold & Reach',
+                        //   onPressed: () =>
+                        //       _go(const TwoHandPlayScreen()),
+                        // ),
 
                         ActionCard(
                           icon: Icons.lunch_dining_rounded,
