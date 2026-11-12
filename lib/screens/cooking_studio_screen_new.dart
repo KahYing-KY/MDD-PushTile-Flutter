@@ -4,7 +4,7 @@ import '../main.dart';
 import 'push_input.dart';
 import 'training_session.dart';
 import 'training_history_service.dart';
-import '../Unused/cooking_scene.dart';
+import 'cooking_scene.dart';
 
 /// Four input positions, corresponding to G, J, T, and U.
 /// Update the cell IDs if your physical board uses different IDs.

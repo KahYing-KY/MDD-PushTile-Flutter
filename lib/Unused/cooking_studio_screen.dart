@@ -4,7 +4,7 @@ import '../main.dart';
 import '../screens/push_input.dart';
 import '../screens/training_session.dart';
 import '../screens/training_history_service.dart';
-import 'cooking_scene.dart';
+import '../screens/cooking_scene.dart';
 
 enum CookingHand { left, right, both }
 
