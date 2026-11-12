@@ -21,6 +21,16 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin app_links, com.llfbandit.app_links.AppLinksPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new io.github.grzesl.flserial.FlserialPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flserial, io.github.grzesl.flserial.FlserialPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new org.sigrok.flutter_libserialport.FlutterLibserialportPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flutter_libserialport, org.sigrok.flutter_libserialport.FlutterLibserialportPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.github.dart_lang.jni.JniPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin jni, com.github.dart_lang.jni.JniPlugin", e);
