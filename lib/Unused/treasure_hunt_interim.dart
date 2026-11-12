@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../main.dart';
-import 'push_input.dart';
-import 'training_session.dart';
-import 'training_history_service.dart';
-import 'hall_sensor_service.dart';
+import '../screens/push_input.dart';
+import '../screens/training_session.dart';
+import '../screens/training_history_service.dart';
+import '../screens/hall_sensor_service.dart';
 
 // =============================================================================
 // 1. RANDOM FOREST INFERENCE ENGINE

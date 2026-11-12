@@ -7,10 +7,10 @@ import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
 import 'sky_burger_real.dart';
-import 'treasure_hunt_adapt.dart';
+//import '../Unused/treasure_hunt_adapt.dart';
 import 'dart:async';
-import 'chatbot_screen.dart';
-import 'treasure_hunt_interim_adapt.dart';
+// import 'chatbot_screen.dart';
+// import 'treasure_hunt_interim_adapt.dart';
 import 'treasure_hunt_interim_sensor.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -228,16 +228,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               _go(const RhythmGameScreen()),
                         ),
 
-                        ActionCard(
-                          icon: Icons.diamond_rounded,
-                          color: kGreen,
-                          title: 'Treasure Hunt',
-                          description:
-                              'Observe the minimap clues to find the treasure in the shortest time possible.',
-                          buttonLabel: 'Play Treasure Hunt',
-                          onPressed: () =>
-                              _go(const TreasureHunt2D5Screen()),
-                        ),
+                        // ActionCard(
+                        //   icon: Icons.diamond_rounded,
+                        //   color: kGreen,
+                        //   title: 'Treasure Hunt',
+                        //   description:
+                        //       'Observe the minimap clues to find the treasure in the shortest time possible.',
+                        //   buttonLabel: 'Play Treasure Hunt',
+                        //   onPressed: () =>
+                        //       _go(const TreasureHunt2D5Screen()),
+                        // ),
 
                         ActionCard(
                           icon: Icons.touch_app_rounded,
@@ -249,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               'towards the treasure.',
                           buttonLabel: 'Play Interim Treasure Hunt',
                           onPressed: () =>
-                              _go(const TreasureHunt2D5ScreenInterim()),
+                              _go(const TreasureHunt2D5ScreenInterimSensor()),
                         ),
 
                         ActionCard(
@@ -387,20 +387,20 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
 
       // CHATBOT BUTTON
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: kTeal,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.chat_bubble_outline),
-        label: const Text('Need help?'),
-        onPressed: () {
-          _stopScrolling();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const ChatbotScreen(),
-            ),
-          );
-        },
-      ),
+      // floatingActionButton: FloatingActionButton.extended(
+      //   backgroundColor: kTeal,
+      //   foregroundColor: Colors.white,
+      //   icon: const Icon(Icons.chat_bubble_outline),
+      //   label: const Text('Need help?'),
+      //   onPressed: () {
+      //     _stopScrolling();
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(
+      //         builder: (_) => const ChatbotScreen(),
+      //       ),
+      //     );
+      //   },
+      // ),
     );
   }
 }
