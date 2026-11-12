@@ -12,6 +12,7 @@ import 'dart:async';
 // import 'chatbot_screen.dart';
 // import 'treasure_hunt_interim_adapt.dart';
 import 'treasure_hunt_interim_sensor.dart';
+import "sensor_screen.dart";
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -227,6 +228,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           onPressed: () =>
                               _go(const RhythmGameScreen()),
                         ),
+
+                        ActionCard(
+                          icon: Icons.sensors_rounded,
+                          color: Colors.deepPurple, // Or your preferred color constant
+                          title: 'PushPoint Monitor',
+                          description: 'View live telemetry from the SS49E Hall sensor, FSR force sensor, and PN532 NFC reader.',
+                          buttonLabel: 'Open Monitor',
+                          onPressed: () => _go(const PushPointScreen()),
+                          ),
 
                         // ActionCard(
                         //   icon: Icons.diamond_rounded,

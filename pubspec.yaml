@@ -38,6 +38,8 @@ dependencies:
 # >>> ADD SUPABASE <<<
   supabase_flutter: ^2.0.0
   http: ^1.6.0
+  flutter_libserialport: ^0.6.0
+  flserial: ^0.7.3
 
 dev_dependencies:
   flutter_test:
@@ -91,3 +93,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_libserialport: ^0.4.0
