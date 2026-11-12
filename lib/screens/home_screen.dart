@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
-import 'light_chase_screen.dart';
+import 'warmup_cooldown_screen.dart';
 import 'rhythm_screen_adapt.dart';
 // import '../Unused/two_hand_play.dart';
 import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
-import 'sky_burger_real.dart';
+import '../Unused/sky_burger_real.dart';
 //import '../Unused/treasure_hunt_adapt.dart';
 import 'dart:async';
 // import 'chatbot_screen.dart';

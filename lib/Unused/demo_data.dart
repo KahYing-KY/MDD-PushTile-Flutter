@@ -1,6 +1,6 @@
 import 'dart:math';
-import 'training_session.dart';
-import 'training_history_service.dart';
+import '../screens/training_session.dart';
+import '../screens/training_history_service.dart';
 
 /// TESTING ONLY. Adds about three weeks of fake sessions whose accuracy
 /// slowly improves, so you can see how the progress screen looks.

@@ -3,8 +3,8 @@ import '../main.dart';
 import 'push_input.dart';
 import 'training_session.dart';
 import 'training_history_service.dart';
-import 'demo_data.dart';
-import 'hall_sensor_panel.dart';
+import '../Unused/demo_data.dart';
+import '../Unused/hall_sensor_panel.dart';
 
 class ProgressScreen extends StatefulWidget {
   const ProgressScreen({super.key});

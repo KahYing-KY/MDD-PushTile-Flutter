@@ -8,7 +8,7 @@ import '../main.dart';
 import '../screens/push_input.dart';
 import '../screens/training_session.dart';
 import '../screens/training_history_service.dart';
-import '../screens/hall_sensor_service.dart';
+import 'hall_sensor_service.dart';
 
 // =============================================================================
 // 1. RANDOM FOREST INFERENCE ENGINE
