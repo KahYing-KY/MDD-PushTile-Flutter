@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import 'light_chase_screen.dart';
 import 'rhythm_screen_adapt.dart';
-import 'two_hand_play.dart';
+// import '../Unused/two_hand_play.dart';
 import 'progress_screen.dart';
 import 'cutting_game.dart';
 import 'cooking_studio_screen_new.dart';
@@ -12,6 +12,7 @@ import 'dart:async';
 // import 'chatbot_screen.dart';
 // import 'treasure_hunt_interim_adapt.dart';
 import 'treasure_hunt_interim_sensor.dart';
+import "sensor_screen.dart";
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -228,6 +229,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               _go(const RhythmGameScreen()),
                         ),
 
+                        ActionCard(
+                          icon: Icons.sensors_rounded,
+                          color: Colors.deepPurple, // Or your preferred color constant
+                          title: 'PushPoint Monitor',
+                          description: 'View live telemetry from the SS49E Hall sensor, FSR force sensor, and PN532 NFC reader.',
+                          buttonLabel: 'Open Monitor',
+                          onPressed: () => _go(const PushPointScreen()),
+                          ),
+
                         // ActionCard(
                         //   icon: Icons.diamond_rounded,
                         //   color: kGreen,
@@ -264,16 +274,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               _go(const TreasureHunt2D5ScreenInterimSensor()),
                         ),
 
-                        ActionCard(
-                          icon: Icons.back_hand_rounded,
-                          color: kBlue,
-                          title: 'Hold & Reach (Two Hands)',
-                          description:
-                              'One hand holds the anchor tile while the other reaches for the lit tile.',
-                          buttonLabel: 'Play Hold & Reach',
-                          onPressed: () =>
-                              _go(const TwoHandPlayScreen()),
-                        ),
+                        // ActionCard(
+                        //   icon: Icons.back_hand_rounded,
+                        //   color: kBlue,
+                        //   title: 'Hold & Reach (Two Hands)',
+                        //   description:
+                        //       'One hand holds the anchor tile while the other reaches for the lit tile.',
+                        //   buttonLabel: 'Play Hold & Reach',
+                        //   onPressed: () =>
+                        //       _go(const TwoHandPlayScreen()),
+                        // ),
 
                         ActionCard(
                           icon: Icons.lunch_dining_rounded,

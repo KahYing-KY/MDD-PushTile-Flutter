@@ -3,9 +3,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../main.dart';
-import 'push_input.dart';
-import 'training_session.dart';
-import 'training_history_service.dart';
+import '../screens/push_input.dart';
+import '../screens/training_session.dart';
+import '../screens/training_history_service.dart';
 
 enum _Phase { setup, playing, done }
 
