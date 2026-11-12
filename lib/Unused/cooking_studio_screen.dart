@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../main.dart';
-import 'push_input.dart';
-import 'training_session.dart';
-import 'training_history_service.dart';
+import '../screens/push_input.dart';
+import '../screens/training_session.dart';
+import '../screens/training_history_service.dart';
 import 'cooking_scene.dart';
 
 enum CookingHand { left, right, both }

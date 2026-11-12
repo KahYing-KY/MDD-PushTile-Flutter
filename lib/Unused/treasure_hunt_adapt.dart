@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../main.dart';
-import 'push_input.dart';
-import 'training_session.dart';
-import 'training_history_service.dart';
+import '../screens/push_input.dart';
+import '../screens/training_session.dart';
+import '../screens/training_history_service.dart';
 
 // ===========================================================================
 // MRC Scale Definition for Stroke Muscle Evaluation (Grades 3 to 5)
